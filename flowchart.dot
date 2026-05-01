@@ -1,0 +1,203 @@
+digraph ProjectFlowchart {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Microsoft YaHei"];
+    edge [fontname="Microsoft YaHei"];
+
+    node [fillcolor="#E3F2FD"];
+
+    subgraph cluster_user {
+        label = "用户界面 (普通用户)";
+        style = "rounded,filled";
+        fillcolor = "#FFF3E0";
+        fontname = "Microsoft YaHei";
+
+        home [label="首页\nHome.vue", fillcolor="#BBDEFB"];
+        train_tickets [label="车票查询\nTrainTickets.vue", fillcolor="#BBDEFB"];
+        about [label="关于我们\nAbout.vue", fillcolor="#BBDEFB"];
+    }
+
+    subgraph cluster_community {
+        label = "社区模块";
+        style = "rounded,filled";
+        fillcolor = "#FFF8E1";
+        fontname = "Microsoft YaHei";
+
+        post_view [label="帖子浏览\nCommunity.vue", fillcolor="#FFE0B2"];
+        post_publish [label="帖子发布\nPublish.vue", fillcolor="#FFE0B2"];
+        note_manager [label="笔记管理\nNoteManager.vue", fillcolor="#FFE0B2"];
+        ai_assistant [label="客服/AI助手\nAssistant.vue", fillcolor="#FFE0B2"];
+        user_profile [label="个人信息\nProfile.vue", fillcolor="#FFE0B2"];
+        creator_home [label="创作者主页\nCreatorHome.vue", fillcolor="#FFE0B2"];
+        notifications [label="通知中心\nNotifications.vue", fillcolor="#FFE0B2"];
+    }
+
+    subgraph cluster_auth {
+        label = "登录注册模块";
+        style = "rounded,filled";
+        fillcolor = "#E8EAF6";
+        fontname = "Microsoft YaHei";
+
+        login [label="登录\nLogin.vue", fillcolor="#C5CAE9"];
+        register [label="注册\nRegister.vue", fillcolor="#C5CAE9"];
+        forgot_pwd [label="找回密码\nForgotPassword.vue", fillcolor="#C5CAE9"];
+        reset_pwd [label="重置密码\nResetPassword.vue", fillcolor="#C5CAE9"];
+    }
+
+    subgraph cluster_admin {
+        label = "管理界面 (管理员/审核员)";
+        style = "rounded,filled";
+        fillcolor = "#E1F5FE";
+        fontname = "Microsoft YaHei";
+
+        admin_layout [label="管理布局\nAdminLayout.vue", fillcolor="#B3E5FC"];
+        dashboard [label="概览仪表盘\nDashboard.vue", fillcolor="#B3E5FC"];
+        user_role [label="用户角色管理\nUserRole.vue", fillcolor="#B3E5FC"];
+        staff_mgr [label="员工管理\nStaffManager.vue", fillcolor="#B3E5FC"];
+        comment_mgr [label="评论管理\nCommentManager.vue", fillcolor="#B3E5FC"];
+        api_provider [label="API提供商配置\nApiProvider.vue", fillcolor="#B3E5FC"];
+        api_logs [label="API日志\nApiLogs.vue", fillcolor="#B3E5FC"];
+        knowledge_base [label="知识库管理\nKnowledgeBase.vue", fillcolor="#B3E5FC"];
+        datasource_mgr [label="数据源管理\nDataSourceManager.vue", fillcolor="#B3E5FC"];
+    }
+
+    subgraph cluster_backend {
+        label = "后端层 (Django)";
+        style = "rounded,filled";
+        fillcolor = "#E8F5E9";
+        fontname = "Microsoft YaHei";
+
+        api_gateway [label="API网关\nurls.py", fillcolor="#C8E6C9"];
+        auth_module [label="认证模块\nAuth", fillcolor="#C8E6C9"];
+        
+        subgraph cluster_data_engine {
+            label = "数据引擎 (data_engine)";
+            style = "rounded,filled";
+            fillcolor = "#DCEDC8";
+            fontname = "Microsoft YaHei";
+
+            rag_service [label="RAG服务\nrag_service.py", fillcolor="#AED581"];
+            llm_router [label="LLM路由\nllm_router.py", fillcolor="#AED581"];
+            crawler [label="爬虫模块\ncrawler.py", fillcolor="#AED581"];
+            knowledge_view [label="知识库视图\nviews.py", fillcolor="#AED581"];
+        }
+        
+        datasource_module [label="数据源管理\ndatasource_manager", fillcolor="#C8E6C9"];
+    }
+
+    subgraph cluster_data {
+        label = "数据层";
+        style = "rounded,filled";
+        fillcolor = "#F3E5F5";
+        fontname = "Microsoft YaHei";
+
+        mysql [label="MySQL数据库\nxbj10", shape=cylinder, fillcolor="#E1BEE7"];
+        chroma [label="向量数据库\nChromaDB", shape=cylinder, fillcolor="#E1BEE7"];
+        supabase [label="Supabase\n存储/认证服务", shape=cylinder, fillcolor="#E1BEE7"];
+    }
+
+    subgraph cluster_external_api {
+        label = "外部API服务";
+        style = "rounded,filled";
+        fillcolor = "#FFEBEE";
+        fontname = "Microsoft YaHei";
+
+        subgraph cluster_llm_providers {
+            label = "LLM提供商";
+            style = "rounded,filled";
+            fillcolor = "#FFCDD2";
+            fontname = "Microsoft YaHei";
+
+            local_llm [label="本地模型\nOllama", shape=cloud, fillcolor="#EF9A9A"];
+            openai [label="OpenAI\nGPT-4等", shape=cloud, fillcolor="#EF9A9A"];
+            zhipu [label="智谱AI\nGLM-4", shape=cloud, fillcolor="#EF9A9A"];
+            spark [label="讯飞星火\nSpark", shape=cloud, fillcolor="#EF9A9A"];
+            deepseek [label="DeepSeek", shape=cloud, fillcolor="#EF9A9A"];
+        }
+        
+        geo_api [label="地理信息API\nGeo API", shape=cloud, fillcolor="#FFCDD2"];
+        weather_api [label="天气信息API\nWeather API", shape=cloud, fillcolor="#FFCDD2"];
+        
+        subgraph cluster_crawlers {
+            label = "数据爬虫";
+            style = "rounded,filled";
+            fillcolor = "#FFCDD2";
+            fontname = "Microsoft YaHei";
+
+            train_crawler [label="12306爬虫\n火车票数据", fillcolor="#EF9A9A"];
+            web_crawler [label="网页爬虫\nJina/UAPI", fillcolor="#EF9A9A"];
+        }
+    }
+
+    home -> api_gateway [label="HTTP请求"];
+    train_tickets -> api_gateway [label="车票查询"];
+    about -> api_gateway [label="页面数据"];
+    
+    post_view -> api_gateway [label="浏览帖子"];
+    post_publish -> api_gateway [label="发布帖子"];
+    note_manager -> api_gateway [label="笔记管理"];
+    ai_assistant -> rag_service [label="AI对话"];
+    user_profile -> api_gateway [label="用户信息"];
+    creator_home -> api_gateway [label="创作者数据"];
+    notifications -> api_gateway [label="通知数据"];
+
+    login -> auth_module [label="登录认证"];
+    register -> auth_module [label="注册"];
+    forgot_pwd -> auth_module [label="找回密码"];
+    reset_pwd -> auth_module [label="重置密码"];
+
+    admin_layout -> {dashboard, user_role, staff_mgr, comment_mgr, api_provider, api_logs, knowledge_base, datasource_mgr} [style=invis];
+    
+    dashboard -> api_gateway [label="统计数据"];
+    user_role -> auth_module [label="权限验证"];
+    staff_mgr -> api_gateway [label="员工数据"];
+    comment_mgr -> api_gateway [label="评论审核"];
+    api_provider -> api_gateway [label="API配置"];
+    api_logs -> api_gateway [label="日志查询"];
+    knowledge_base -> knowledge_view [label="知识管理"];
+    datasource_mgr -> datasource_module [label="数据源配置"];
+
+    api_gateway -> auth_module;
+    api_gateway -> rag_service;
+    api_gateway -> knowledge_view;
+    api_gateway -> datasource_module;
+
+    rag_service -> llm_router [label="模型选择"];
+    rag_service -> chroma [label="向量检索"];
+    
+    llm_router -> local_llm [label="本地推理"];
+    llm_router -> openai [label="OpenAI API"];
+    llm_router -> zhipu [label="智谱API"];
+    llm_router -> spark [label="星火API"];
+    llm_router -> deepseek [label="DeepSeek API"];
+    
+    llm_router -> geo_api [label="地理查询"];
+    llm_router -> weather_api [label="天气查询"];
+
+    knowledge_view -> crawler [label="触发爬取"];
+    crawler -> train_crawler [label="火车票数据"];
+    crawler -> web_crawler [label="网页内容"];
+    
+    crawler -> mysql [label="数据入库"];
+    crawler -> chroma [label="向量化存储"];
+
+    auth_module -> mysql [label="用户数据"];
+    auth_module -> supabase [label="认证服务"];
+    
+    api_gateway -> mysql [label="业务数据"];
+    api_gateway -> supabase [label="文件存储"];
+
+    subgraph cluster_legend {
+        label = "图例";
+        style = "rounded";
+        fontname = "Microsoft YaHei";
+
+        legend1 [label="用户界面", fillcolor="#BBDEFB"];
+        legend6 [label="社区模块", fillcolor="#FFE0B2"];
+        legend7 [label="登录注册", fillcolor="#C5CAE9"];
+        legend5 [label="管理界面", fillcolor="#B3E5FC"];
+        legend2 [label="后端模块", fillcolor="#C8E6C9"];
+        legend8 [label="数据引擎", fillcolor="#AED581"];
+        legend3 [label="数据存储", shape=cylinder, fillcolor="#E1BEE7"];
+        legend4 [label="外部API", shape=cloud, fillcolor="#FFCDD2"];
+    }
+}

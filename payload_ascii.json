@@ -1,0 +1,6 @@
+{
+    "model": "glm-4-flash:881617285:travel:xpe5vwbl",
+    "messages": [
+        {"role": "user", "content": "Please introduce Shanghai Oriental Pearl."}
+    ]
+}

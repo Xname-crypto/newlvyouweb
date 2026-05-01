@@ -1,0 +1,74 @@
+flowchart TB
+    subgraph 系统功能结构
+        direction TB
+        
+        subgraph 用户功能
+            u1[浏览首页]
+            u2[车票查询]
+            u3[社区浏览]
+            u4[帖子发布]
+            u5[AI 助手]
+            u6[个人信息]
+            u7[登录注册]
+        end
+        
+        subgraph 管理员功能
+            a1[仪表盘]
+            a2[用户管理]
+            a3[内容管理]
+            a4[API 配置]
+            a5[知识库管理]
+            a6[数据源管理]
+            a7[日志查看]
+        end
+        
+        subgraph 数据服务层
+            d1[API 网关]
+            d2[认证服务]
+            d3[RAG 服务]
+            d4[LLM 路由]
+            d5[爬虫服务]
+        end
+        
+        subgraph 数据存储层
+            db1[(MySQL)]
+            db2[(ChromaDB)]
+            db3[(Supabase)]
+        end
+        
+        subgraph 外部服务
+            ext1[Ollama]
+            ext2[OpenAI]
+            ext3[智谱 AI]
+            ext4[12306]
+            ext5[地理 API]
+            ext6[天气 API]
+        end
+    end
+    
+    用户功能 --> d1
+    管理员功能 --> d1
+    
+    d1 --> d2
+    d1 --> d3
+    d1 --> d5
+    
+    d3 --> d4
+    d4 --> ext1
+    d4 --> ext2
+    d4 --> ext3
+    d4 --> ext5
+    d4 --> ext6
+    
+    d5 --> ext4
+    
+    d2 --> db1
+    d3 --> db2
+    d5 --> db1
+    d1 --> db3
+    
+    style 用户功能 fill:#E3F2FD,stroke:#2196F3
+    style 管理员功能 fill:#FFEBEE,stroke:#F44336
+    style 数据服务层 fill:#E8F5E9,stroke:#4CAF50
+    style 数据存储层 fill:#F3E5F5,stroke:#9C27B0
+    style 外部服务 fill:#FFF3E0,stroke:#FF9800
