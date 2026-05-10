@@ -26,7 +26,6 @@ hyperframe==6.1.0
 idna==3.11
 langchain-community==0.4.1
 langchain-core==1.2.22
-langchain-huggingface==1.2.1
 langchain-text-splitters==1.1.1
 markdown-it-py==4.0.0
 mdurl==0.1.2
@@ -51,7 +50,6 @@ python-dateutil==2.9.0.post0
 realtime==2.28.2
 requests==2.32.5
 rich==14.3.3
-sentence-transformers==5.3.0
 six==1.17.0
 sqlparse==0.5.5
 storage3==2.28.2

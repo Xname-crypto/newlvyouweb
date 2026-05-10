@@ -17,6 +17,7 @@ from .crawler import run_crawl
 from .llm_router import resolve_chat_llm
 from .models import EmbeddingProfile, KnowledgeBase, AdminQATestSession, AdminQATestMessage
 from .rag_service import create_knowledge_base, delete_knowledge_collection, load_documents, rag_service, split_documents
+from .utils import get_embedding
 from .serializers import (
     EmbeddingProfileSerializer,
     KnowledgeBaseSerializer,
@@ -27,6 +28,7 @@ from .serializers import (
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_MATCH_FUNCTION = os.getenv("SUPABASE_MATCH_FUNCTION", "match_knowledge_base")
 
 # Allowed file extensions for upload
 ALLOWED_FILE_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".csv", ".json", ".html", ".htm", ".pptx"}
@@ -552,6 +554,70 @@ def _has_any_knowledge_base() -> bool:
     return KnowledgeBase.objects.filter(kind="knowledge_base", parent_knowledge_base__isnull=True).exists()
 
 
+def _doc_from_result(content: str, metadata: Dict[str, Any] | None = None):
+    from langchain_core.documents import Document
+
+    return Document(page_content=str(content or ""), metadata=_safe_metadata_dict(metadata))
+
+
+def _search_supabase_knowledge(user_input: str, kb: KnowledgeBase | None = None, limit: int = 4):
+    supabase = _get_supabase()
+    query_text = str(user_input or "").strip()
+    if not supabase or not query_text:
+        return []
+
+    query_embedding = get_embedding(query_text)
+    if query_embedding:
+        try:
+            params = {
+                "query_embedding": query_embedding,
+                "match_count": limit,
+            }
+            if kb:
+                params["filter"] = {"knowledge_base_id": kb.id}
+            resp = supabase.rpc(SUPABASE_MATCH_FUNCTION, params).execute()
+            rows = getattr(resp, "data", None) or []
+            docs = []
+            for row in rows[:limit]:
+                if not isinstance(row, dict):
+                    continue
+                content = row.get("content") or row.get("document") or row.get("text") or ""
+                metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                if content:
+                    docs.append(_doc_from_result(content, metadata))
+            if docs:
+                return docs
+        except Exception as exc:
+            print(f"[RAG] Supabase vector RPC failed: {exc}")
+
+    try:
+        query = supabase.table("knowledge_base").select("content,metadata").limit(limit)
+        rows = getattr(query.execute(), "data", None) or []
+        keyword = query_text[:24].lower()
+        docs = []
+        for row in rows:
+            content = str(row.get("content") or "")
+            if keyword and keyword not in content.lower():
+                continue
+            docs.append(_doc_from_result(content, row.get("metadata")))
+        return docs or [_doc_from_result(row.get("content") or "", row.get("metadata")) for row in rows if row.get("content")]
+    except Exception as exc:
+        print(f"[RAG] Supabase fallback search failed: {exc}")
+        return []
+
+
+class ExternalKnowledgeRetriever:
+    def __init__(self, kb: KnowledgeBase | None = None):
+        self.kb = kb
+        self.force_retrieve = True
+
+    def as_retriever(self, *args, **kwargs):
+        return self
+
+    def invoke(self, query: str):
+        return _search_supabase_knowledge(query, self.kb)
+
+
 def _ensure_kb_vectordb(kb: KnowledgeBase):
     if not kb:
         return None
@@ -559,7 +625,11 @@ def _ensure_kb_vectordb(kb: KnowledgeBase):
     embedding_model = getattr(getattr(kb, "embedding_profile", None), "embedding_model", None)
     quantization = getattr(getattr(kb, "embedding_profile", None), "quantization", "") or ""
 
-    from rag_v6 import get_collection_name, _embedding_model
+    from rag_v6 import get_collection_name, _embedding_model, is_local_embedding_enabled
+
+    if not is_local_embedding_enabled():
+        return ExternalKnowledgeRetriever(kb)
+
     from langchain_community.vectorstores import Chroma
     from langchain_core.documents import Document
 
@@ -1816,7 +1886,10 @@ class AdminQATestSessionViewSet(viewsets.ViewSet):
         session.save(update_fields=["status", "release_enabled", "notes", "updated_at"])
 
         if session.knowledge_base_id and session.knowledge_base:
-            _ensure_kb_vectordb(session.knowledge_base)
+            try:
+                _ensure_kb_vectordb(session.knowledge_base)
+            except Exception as exc:
+                print(f"[QA_TEST] prepare knowledge retriever failed: {exc}")
             if session.knowledge_base.status != "active":
                 session.knowledge_base.status = "active"
                 session.knowledge_base.save(update_fields=["status", "updated_at"])

@@ -53,18 +53,6 @@ except Exception:
                         break
             return out
 
-try:
-    from langchain_community.embeddings import SentenceTransformerEmbeddings
-except Exception:
-    from langchain_huggingface import HuggingFaceEmbeddings as SentenceTransformerEmbeddings
-
-from langchain_community.vectorstores import Chroma
-
-try:
-    from sentence_transformers import CrossEncoder
-except Exception:
-    CrossEncoder = None  # type: ignore[assignment]
-
 
 class RAGConfig:
     chunk_size = 800
@@ -78,6 +66,48 @@ class RAGConfig:
     # 如需启用，改为 "BAAI/bge-reranker-base" 并确保内存充足
     rerank_model = None
     memory_db_path = "./memory.db"
+    embedding_backend = os.getenv("RAG_EMBEDDING_BACKEND", "external").strip().lower() or "external"
+    local_embeddings_enabled = str(os.getenv("RAG_LOCAL_EMBEDDINGS_ENABLED", "0")).lower() in ("1", "true", "yes", "on")
+
+
+def is_local_embedding_enabled() -> bool:
+    return RAGConfig.embedding_backend in ("local", "chroma", "huggingface") or RAGConfig.local_embeddings_enabled
+
+
+def _load_sentence_transformer_embeddings():
+    try:
+        from langchain_community.embeddings import SentenceTransformerEmbeddings
+        return SentenceTransformerEmbeddings
+    except Exception:
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            return HuggingFaceEmbeddings
+        except Exception as exc:
+            raise RuntimeError(
+                "Local embedding dependencies are not installed. "
+                "Use RAG_EMBEDDING_BACKEND=external for Zeabur, or install "
+                "sentence-transformers/langchain-huggingface for local Chroma."
+            ) from exc
+
+
+def _load_chroma_vectorstore():
+    try:
+        import chromadb
+        from langchain_community.vectorstores import Chroma
+        return chromadb, Chroma
+    except Exception as exc:
+        raise RuntimeError(
+            "Local Chroma dependencies are not installed. "
+            "Use RAG_EMBEDDING_BACKEND=external for Zeabur, or install chromadb/langchain-community locally."
+        ) from exc
+
+
+def _load_cross_encoder():
+    try:
+        from sentence_transformers import CrossEncoder
+        return CrossEncoder
+    except Exception:
+        return None
 
 
 def slugify(text: str) -> str:
@@ -96,7 +126,7 @@ def get_collection_name(kb_id: int, kb_name: str = "") -> str:
 
 
 # Embedding 模型缓存，支持多配置
-_embedding_model_cache: Dict[str, SentenceTransformerEmbeddings] = {}
+_embedding_model_cache: Dict[str, Any] = {}
 
 
 # 意图判断关键词 - 用于决定是否检索知识库
@@ -401,7 +431,7 @@ def _embedding_model(
     quantization: str = "",
     chunk_size: int = None,
     chunk_overlap: int = None,
-) -> SentenceTransformerEmbeddings:
+) -> Any:
     """
     获取 Embedding 模型实例，支持量化配置。
 
@@ -411,10 +441,17 @@ def _embedding_model(
         chunk_size: 文本分块大小，为空则用 RAGConfig 默认值
         chunk_overlap: 块重叠大小，为空则用 RAGConfig 默认值
     """
+    if not is_local_embedding_enabled():
+        raise RuntimeError(
+            "Local embedding is disabled for deployment. "
+            "Set RAG_EMBEDDING_BACKEND=local and install local model dependencies to use Chroma locally."
+        )
+
     model_name = embedding_model or RAGConfig.embedding_model
     cache_key = f"{model_name}_q{quantization}"
 
     if cache_key not in _embedding_model_cache:
+        SentenceTransformerEmbeddings = _load_sentence_transformer_embeddings()
         kwargs: Dict[str, Any] = {"model_kwargs": {"local_files_only": True}}
 
         # 尝试启用 BitsAndBytes 量化（需要 bitsandbytes 库）
@@ -472,6 +509,12 @@ def create_knowledge_base(
         kb_id: 关联的 KB id（用于生成默认 collection 名）
         kb_name: KB 名称（用于生成默认 collection 名）
     """
+    if not is_local_embedding_enabled():
+        raise RuntimeError(
+            "Local Chroma knowledge base creation is disabled for deployment. "
+            "Use Supabase/Zhipu external embeddings in production."
+        )
+
     if not documents:
         return None
 
@@ -498,6 +541,7 @@ def create_knowledge_base(
         embedding_model=embedding_model,
         quantization=quantization,
     )
+    chromadb, Chroma = _load_chroma_vectorstore()
 
     # 检查 collection 是否已存在（追加场景）
     try:
@@ -567,6 +611,7 @@ def rerank_documents(query: str, documents: List[Document], top_k: int) -> List[
     # 如果 rerank_model 为 None，禁用 reranker
     if RAGConfig.rerank_model is None:
         return documents[:top_k]
+    CrossEncoder = _load_cross_encoder()
     if CrossEncoder is None:
         return documents[:top_k]
     try:
@@ -620,7 +665,8 @@ class PersonalizedRAGEngine:
         # 意图判断：非旅行问题不检索知识库
         should_retrieve = _should_retrieve_knowledge(user_input)
 
-        if not should_retrieve or not self.knowledge_db:
+        force_retrieve = bool(getattr(self.knowledge_db, "force_retrieve", False))
+        if not (force_retrieve or should_retrieve) or not self.knowledge_db:
             return user_input, False
 
         # 检索知识库
