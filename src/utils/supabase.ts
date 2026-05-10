@@ -24,8 +24,14 @@ const SUPABASE_DEGRADED_KEY = supabaseProjectRef
   ? `sb-${supabaseProjectRef}-auth-degraded`
   : 'sb-auth-degraded'
 
+const SUPABASE_DEGRADED_MESSAGE =
+  'Supabase auth service is unreachable. Please check the network, proxy, or VITE_SUPABASE_URL.'
+
 const DEGRADE_RESPONSE_BODY = {
-  error: 'Supabase auth degraded to guest mode.',
+  code: 'supabase_auth_unreachable',
+  error: SUPABASE_DEGRADED_MESSAGE,
+  message: SUPABASE_DEGRADED_MESSAGE,
+  msg: SUPABASE_DEGRADED_MESSAGE,
 }
 
 let hasLoggedDegradedMode = false
@@ -34,7 +40,8 @@ export const isSupabaseNetworkError = (error: unknown) => {
   const message = String((error as any)?.message || error || '').toLowerCase()
   const name = String((error as any)?.name || '').toLowerCase()
 
-  return [
+  return (
+    [
     'failed to fetch',
     'networkerror',
     'load failed',
@@ -44,9 +51,14 @@ export const isSupabaseNetworkError = (error: unknown) => {
     'aborterror',
     'the user aborted a request',
     'request was aborted',
+    'authretryablefetcherror',
     'lockmanager',
     'supabase auth degraded to guest mode',
-  ].some((keyword) => message.includes(keyword)) || name === 'aborterror'
+    'supabase auth service is unreachable',
+    ].some((keyword) => message.includes(keyword)) ||
+    name === 'aborterror' ||
+    name === 'authretryablefetcherror'
+  )
 }
 
 export const isSupabaseMissingSessionError = (error: unknown) => {
@@ -82,7 +94,7 @@ const markSupabaseAuthDegraded = () => {
   logSupabaseDegradedMode()
 }
 
-const clearSupabaseAuthDegraded = () => {
+export const clearSupabaseAuthDegraded = () => {
   try {
     sessionStorage.removeItem(SUPABASE_DEGRADED_KEY)
   } catch {
@@ -110,12 +122,17 @@ export const clearStoredSupabaseSession = () => {
 }
 
 if (hasSupabaseAuthDegraded()) {
-  clearStoredSupabaseSession()
+  logSupabaseDegradedMode()
 }
 
 const supabaseFetch: typeof fetch = async (input, init) => {
   if (hasSupabaseAuthDegraded()) {
-    return createDegradedResponse()
+    const method = String(init?.method || 'GET').toUpperCase()
+    if (method === 'GET' || method === 'HEAD') {
+      return createDegradedResponse()
+    }
+
+    clearSupabaseAuthDegraded()
   }
 
   try {
@@ -123,7 +140,6 @@ const supabaseFetch: typeof fetch = async (input, init) => {
   } catch (error) {
     if (isSupabaseNetworkError(error)) {
       markSupabaseAuthDegraded()
-      clearStoredSupabaseSession()
       void supabase.auth.stopAutoRefresh()
       return createDegradedResponse()
     }
@@ -134,9 +150,9 @@ const supabaseFetch: typeof fetch = async (input, init) => {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: !hasSupabaseAuthDegraded(),
-    persistSession: !hasSupabaseAuthDegraded(),
-    detectSessionInUrl: !hasSupabaseAuthDegraded(),
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
   },
   global: {
     fetch: supabaseFetch,
@@ -162,7 +178,6 @@ export const safeGetSupabaseSession = async () => {
 
       if (isSupabaseNetworkError(error)) {
         markSupabaseAuthDegraded()
-        clearStoredSupabaseSession()
         void supabase.auth.stopAutoRefresh()
         return null
       }
@@ -180,7 +195,6 @@ export const safeGetSupabaseSession = async () => {
 
     if (isSupabaseNetworkError(error)) {
       markSupabaseAuthDegraded()
-      clearStoredSupabaseSession()
       void supabase.auth.stopAutoRefresh()
       return null
     }
@@ -204,7 +218,6 @@ export const safeGetSupabaseUser = async () => {
 
       if (isSupabaseNetworkError(error)) {
         markSupabaseAuthDegraded()
-        clearStoredSupabaseSession()
         void supabase.auth.stopAutoRefresh()
         return null
       }
@@ -222,7 +235,6 @@ export const safeGetSupabaseUser = async () => {
 
     if (isSupabaseNetworkError(error)) {
       markSupabaseAuthDegraded()
-      clearStoredSupabaseSession()
       void supabase.auth.stopAutoRefresh()
       return null
     }

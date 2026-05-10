@@ -1,4 +1,6 @@
 import { safeGetSupabaseSession } from '@/utils/supabase'
+import { repairUtf8Mojibake, repairUtf8MojibakeList } from '@/utils/encoding'
+import { apiUrl } from '@/utils/apiBase'
 
 export interface SpotItem {
   id: string
@@ -339,7 +341,7 @@ const request = async <T>(url: string, options: RequestOptions = {}): Promise<T>
       throw new Error(LOGIN_REQUIRED_ERROR)
     }
 
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl(url), {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -461,6 +463,21 @@ const toGuestItem = (spot: SpotItem, recommendationReason?: string): ItineraryIt
   updated_at: new Date().toISOString(),
 })
 
+const repairSpotEncoding = <T extends SpotItem>(spot: T): T => ({
+  ...spot,
+  id: repairUtf8Mojibake(spot.id || ''),
+  spot_key: repairUtf8Mojibake(spot.spot_key || ''),
+  name: repairUtf8Mojibake(spot.name || ''),
+  city: repairUtf8Mojibake(spot.city || ''),
+  description: repairUtf8Mojibake(spot.description || ''),
+  tags: repairUtf8MojibakeList(spot.tags || []),
+  opening_hours: repairUtf8Mojibake(spot.opening_hours || ''),
+  visit_duration: repairUtf8Mojibake(spot.visit_duration || ''),
+  booking_required: repairUtf8Mojibake(spot.booking_required || ''),
+  address: repairUtf8Mojibake(spot.address || ''),
+  recommendation_reason: repairUtf8Mojibake(spot.recommendation_reason || ''),
+})
+
 const hasSession = async () => {
   const session = await safeGetSupabaseSession()
   return Boolean(session?.user)
@@ -473,9 +490,14 @@ export const travelDiscoveryService = {
     }
 
     const data = await request<DiscoveryListResponse>(`/api/discovery/spots/${buildQuery(filters)}`)
+    const items = (data.items || []).map(repairSpotEncoding)
     return {
       ...data,
-      items: mergeGuestFlags(data.items || []),
+      items: mergeGuestFlags(items),
+      filters: {
+        cities: repairUtf8MojibakeList(data.filters?.cities || []),
+        tags: repairUtf8MojibakeList(data.filters?.tags || []),
+      },
     }
   },
 
@@ -491,11 +513,13 @@ export const travelDiscoveryService = {
       } as SpotDetailResponse
     }
 
-    const data = await request<SpotDetailResponse>(`/api/discovery/spots/${encodeURIComponent(spotKey)}/`)
+    const normalizedSpotKey = repairUtf8Mojibake(spotKey)
+    const data = await request<SpotDetailResponse>(`/api/discovery/spots/${encodeURIComponent(normalizedSpotKey)}/`)
+    const detail = repairSpotEncoding(data)
     return {
-      ...data,
-      in_itinerary: Boolean(data.in_itinerary),
-      similar_spots: mergeGuestFlags(data.similar_spots || []),
+      ...detail,
+      in_itinerary: Boolean(detail.in_itinerary),
+      similar_spots: mergeGuestFlags((data.similar_spots || []).map(repairSpotEncoding)),
     }
   },
 

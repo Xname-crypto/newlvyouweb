@@ -1,66 +1,67 @@
 <template>
   <section class="atlas-stage" @wheel.prevent="handleWheel">
-    <div v-if="dataset && visibleStack.length" class="atlas-stage__inner">
-      <div class="atlas-stack-wrapper">
-        <TransitionGroup name="card-stack" tag="div" class="atlas-stack" :class="[`dir-${transitionDirection}`]">
-          <article 
-            v-for="card in visibleStack"
-            :key="card.key"
-            class="atlas-card"
-            :class="card.offsetClass"
-          >
-            <div class="atlas-card__content">
-              <header class="atlas-card__header">
-                <h1>{{ card.title }}</h1>
-                <p class="atlas-card__subtitle">{{ card.subtitle }}</p>
-                <div class="atlas-card__meta">
-                  Updated {{ card.updatedLabel }} • {{ card.sourceCount }} sources • {{ card.tags.length }} tags
-                </div>
-              </header>
-
-              <div class="atlas-card__definition">
-                <input
-                  v-if="card.isPrimary"
-                  v-model="cardDefinition"
-                  type="text"
-                  class="atlas-card__definition-input"
-                  placeholder="Write a one-line definition for this concept."
-                />
-                <input
-                  v-else
-                  :value="card.summary !== DEFAULT_SUMMARY ? card.summary : ''"
-                  readonly
-                  type="text"
-                  class="atlas-card__definition-input atlas-card__definition-input--ghost"
-                  placeholder="Write a one-line definition for this concept."
-                />
-              </div>
-
-              <div v-if="card.tags.length" class="atlas-card__tags">
-                <span v-for="tag in card.tags" :key="`${card.key}-${tag}`" class="atlas-card__tag">#{{ tag }}</span>
-              </div>
-
-              <section class="atlas-card__section atlas-card__section--meaning">
-                <div class="atlas-card__eyebrow">PERSONAL MEANING</div>
-                <p class="atlas-card__meaning">{{ card.meaning || 'Capture why this concept matters in your own words.' }}</p>
-              </section>
-
-              <section class="atlas-card__section atlas-card__section--sources">
-                <div class="atlas-card__eyebrow">SOURCES</div>
-                <p v-if="!card.sources.length" class="atlas-card__empty">No sources</p>
-                <div v-else class="atlas-card__sources">
-                  <article v-for="source in card.sources" :key="source.key" class="atlas-card__source">
-                    <strong>{{ source.title }}</strong>
-                    <span>{{ source.caption }}</span>
-                    <p v-if="source.preview">{{ source.preview }}</p>
-                  </article>
-                </div>
-              </section>
+    <div v-if="activeCard" class="atlas-stage__inner">
+      <div class="atlas-card-shell" :class="[`dir-${transitionDirection}`, `tick-${transitionTick}`]">
+        <article :key="`${activeCard.key}-${transitionTick}`" class="atlas-card">
+          <div class="atlas-card__loadbar" aria-hidden="true">
+            <div class="atlas-loadbar__track">
+              <span class="atlas-loadbar__fill"></span>
+              <span class="atlas-loadbar__glow"></span>
             </div>
-          </article>
-        </TransitionGroup>
+            <div class="atlas-loadbar__steps">
+              <span
+                v-for="(step, index) in loadSteps"
+                :key="step"
+                class="atlas-loadbar__step"
+                :style="{ '--step-index': index }"
+              >
+                {{ step }}
+              </span>
+            </div>
+          </div>
 
-        <div class="atlas-stack__index">{{ currentIndex + 1 }}/{{ totalCount }}</div>
+          <div class="atlas-card__content">
+            <header class="atlas-card__header">
+              <h1>{{ activeCard.title }}</h1>
+              <p class="atlas-card__subtitle">{{ activeCard.subtitle }}</p>
+              <div class="atlas-card__meta">
+                Updated {{ activeCard.updatedLabel }} / {{ activeCard.sourceCount }} sources / {{ activeCard.tags.length }} tags
+              </div>
+            </header>
+
+            <div class="atlas-card__definition">
+              <input
+                v-model="cardDefinition"
+                type="text"
+                class="atlas-card__definition-input"
+                placeholder="Write a one-line definition for this concept."
+              />
+            </div>
+
+            <div v-if="activeCard.tags.length" class="atlas-card__tags">
+              <span v-for="tag in activeCard.tags" :key="`${activeCard.key}-${tag}`" class="atlas-card__tag">#{{ tag }}</span>
+            </div>
+
+            <section class="atlas-card__section atlas-card__section--meaning">
+              <div class="atlas-card__eyebrow">PERSONAL MEANING</div>
+              <p class="atlas-card__meaning">{{ activeCard.meaning || DEFAULT_MEANING }}</p>
+            </section>
+
+            <section class="atlas-card__section atlas-card__section--sources">
+              <div class="atlas-card__eyebrow">SOURCES</div>
+              <p v-if="!activeCard.sources.length" class="atlas-card__empty">No sources</p>
+              <div v-else class="atlas-card__sources">
+                <article v-for="source in activeCard.sources" :key="source.key" class="atlas-card__source">
+                  <strong>{{ source.title }}</strong>
+                  <span>{{ source.caption }}</span>
+                  <p v-if="source.preview">{{ source.preview }}</p>
+                </article>
+              </div>
+            </section>
+          </div>
+        </article>
+
+        <div class="atlas-card__index">{{ currentIndex + 1 }}/{{ totalCount }}</div>
       </div>
     </div>
 
@@ -104,7 +105,7 @@ const props = defineProps<{
   documents: KnowledgeBaseItem[]
   currentIndex: number
   totalCount: number
-  stackCards: any[]
+  stackCards: KnowledgeBaseItem[]
   transitionDirection: 'up' | 'down'
   transitionTick: number
 }>()
@@ -116,69 +117,36 @@ const emit = defineEmits<{
 
 const DEFAULT_SUMMARY = 'Write a one-line definition for this concept.'
 const DEFAULT_MEANING = 'Capture why this concept matters in your own words.'
+const loadSteps = ['Read dataset', 'Parse tags', 'Summarize sources', 'Render card']
 const cardDefinition = ref('')
 
 let lastWheelTime = 0
 let wheelAccumulator = 0
 
-const handleWheel = (e: WheelEvent) => {
-  e.preventDefault() // prevent default scrolling behavior entirely for the stage
-  
-  const now = Date.now()
-  if (now - lastWheelTime > 400) {
-    wheelAccumulator = 0
-  }
-  
-  wheelAccumulator += e.deltaY
-  
-  // High threshold for trackpads, low for mouse wheels
-  if (Math.abs(wheelAccumulator) > 60) {
-    if (now - lastWheelTime > 600) {
-      if (wheelAccumulator > 0) {
-        emit('wheelNavigate', 1)
-      } else {
-        emit('wheelNavigate', -1)
-      }
-      lastWheelTime = now
-      wheelAccumulator = 0
-    }
-  }
-}
-
-/**
- * 清理文本中的HTML标签并规范化空白字符
-
- * @param value 需要处理的文本
- * @returns 清理后的纯文本
- */
 const normalizeText = (value?: string) =>
   String(value || '')
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
-/**
- * 截断文本到指定长度并在末尾添加省略号
- * @param value 要截断的文本
- * @param limit 最大字符数限制
- * @returns 截断后的文本
- */
 const clampText = (value: string, limit: number) => {
   const plain = normalizeText(value)
   if (!plain) return ''
   return plain.length > limit ? `${plain.slice(0, limit)}...` : plain
 }
 
-/**
- * 从知识库项目中提取标签列表
- * @param item 知识库项目对象
- * @returns 提取的标签数组
- */
+const formatDate = (value?: string) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+}
+
 const extractTags = (item?: KnowledgeBaseItem | null) => {
   const metadata = item?.metadata || {}
   const raw = [
     ...(Array.isArray(metadata.tags) ? metadata.tags : []),
-    ...(typeof metadata.keywords === 'string' ? metadata.keywords.split(/[,\s，、|/]+/) : []),
+    ...(typeof metadata.keywords === 'string' ? metadata.keywords.split(/[,\s/]+/) : []),
     metadata.category,
     metadata.business_type,
     metadata.city,
@@ -187,22 +155,6 @@ const extractTags = (item?: KnowledgeBaseItem | null) => {
   return [...new Set(raw.map(entry => String(entry || '').trim()).filter(Boolean))].slice(0, 6)
 }
 
-/**
- * 格式化日期为 YYYY/M/D 格式
- * @param value 日期字符串或时间戳
- * @returns 格式化后的日期字符串
- */
-const formatDate = (value?: string) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
-}
-
-/**
- * 获取文档来源类型标签
- * @param doc 知识库文档对象
- * @returns 来源类型描述文字
- */
 const sourceTypeLabel = (doc: KnowledgeBaseItem) => {
   const type = doc.metadata?.source_type
   if (type === 'upload') return 'File source'
@@ -211,49 +163,29 @@ const sourceTypeLabel = (doc: KnowledgeBaseItem) => {
   return 'Text source'
 }
 
-/**
- * 构建文档元数据信息行
- * @param doc 知识库文档对象
- * @returns 格式化的元数据字符串
- */
 const sourceMetaLine = (doc: KnowledgeBaseItem) => {
   const parts = [
     sourceTypeLabel(doc),
     doc.metadata?.city,
     doc.metadata?.business_type || doc.metadata?.category,
   ]
-  .map(entry => String(entry || '').trim())
-  .filter(Boolean)
+    .map(entry => String(entry || '').trim())
+    .filter(Boolean)
 
-  return parts.join(' • ')
+  return parts.join(' / ')
 }
 
-/**
- * 预览文本内容并截断过长部分
- * @param value 要预览的文本
- * @returns 截断后的预览文本
- */
 const previewText = (value?: string) => {
   const plain = normalizeText(value)
   if (!plain) return ''
   return plain.length > 118 ? `${plain.slice(0, 118)}...` : plain
 }
 
-/**
- * 构建项目描述文本，优先使用显式定义的字段
- * @param item 知识库项目对象
- * @param docs 关联的文档数组
- * @returns 构建的描述文本
- */
 const buildDescription = (item?: KnowledgeBaseItem | null, docs: KnowledgeBaseItem[] = []) => {
   const metadata = item?.metadata || {}
-  const explicit = [
-    metadata.description,
-    metadata.summary,
-    metadata.alias,
-  ]
-  .map(entry => normalizeText(entry))
-  .filter(Boolean)
+  const explicit = [metadata.description, metadata.summary, metadata.alias]
+    .map(entry => normalizeText(entry))
+    .filter(Boolean)
 
   if (explicit.length) return explicit.join(' ')
 
@@ -270,31 +202,15 @@ const buildDescription = (item?: KnowledgeBaseItem | null, docs: KnowledgeBaseIt
     .join(' ')
 }
 
-/**
- * 构建个人意义说明文本
- * @param item 知识库项目对象
- * @param description 备用的描述文本
- * @returns 个人意义说明文本
- */
 const buildMeaning = (item?: KnowledgeBaseItem | null, description = '') => {
   const metadata = item?.metadata || {}
-  const explicitMeaning = [
-    metadata.personal_meaning,
-    metadata.meaning,
-    metadata.insight,
-  ]
-  .map(entry => normalizeText(entry))
-  .find(Boolean)
+  const explicitMeaning = [metadata.personal_meaning, metadata.meaning, metadata.insight]
+    .map(entry => normalizeText(entry))
+    .find(Boolean)
 
   return clampText(explicitMeaning || description || DEFAULT_MEANING, 170) || DEFAULT_MEANING
 }
 
-/**
- * 构建来源展示数据结构
- * @param doc 知识库文档对象
- * @param index 文档索引
- * @returns 来源展示对象
- */
 const buildSourcePresentation = (doc: KnowledgeBaseItem, index: number): SourcePresentation => {
   const title = doc.metadata?.title || doc.metadata?.name || doc.name || `Source ${doc.id}`
   const caption = String(
@@ -314,13 +230,6 @@ const buildSourcePresentation = (doc: KnowledgeBaseItem, index: number): SourceP
   }
 }
 
-/**
- * 构建完整的卡片展示数据结构
- * @param item 知识库项目对象
- * @param documents 关联的文档数组
- * @param keyPrefix 键名前缀
- * @returns 卡片展示对象或null
- */
 const buildCardPresentation = (
   item?: KnowledgeBaseItem | null,
   documents: KnowledgeBaseItem[] = [],
@@ -337,12 +246,7 @@ const buildCardPresentation = (
     key: `${keyPrefix}-${item.id}`,
     id: item.id,
     title: metadata.title || item.name || metadata.name || metadata.city || 'New Card',
-    subtitle: [
-      metadata.city,
-      metadata.business_type || metadata.category,
-    ]
-      .filter(Boolean)
-      .join(' · ') || metadata.alias || '新卡片',
+    subtitle: [metadata.city, metadata.business_type || metadata.category].filter(Boolean).join(' / ') || metadata.alias || 'New card',
     updatedLabel: formatDate(item.updated_at),
     tags,
     summary: clampText(description || DEFAULT_SUMMARY, 132) || DEFAULT_SUMMARY,
@@ -352,42 +256,25 @@ const buildCardPresentation = (
   }
 }
 
-/** 当前选中的卡片展示数据 */
-const activeIndex = computed(() => Math.max(props.currentIndex, 0))
+const activeCard = computed(() => buildCardPresentation(props.dataset, props.documents, 'active'))
 
-const visibleStack = computed(() => {
-  if (!props.stackCards.length) return []
-  const idx = activeIndex.value
-  
-  const result: (CardPresentation & { offsetClass: string, isPrimary: boolean })[] = []
-  
-  for (let offset = -2; offset <= 2; offset++) {
-    const itemIdx = idx + offset
-    if (itemIdx < 0 || itemIdx >= props.stackCards.length) continue
-    
-    const item = props.stackCards[itemIdx]
-    const card = buildCardPresentation(item, [item], `stack-${item.id}`)
-    
-    if (card) {
-      let offsetClass = 'is-primary'
-      if (offset < 0) offsetClass = `is-past-${Math.abs(offset)}`
-      if (offset > 0) offsetClass = `is-future-${offset}`
-      
-      result.push({
-        ...card,
-        isPrimary: offset === 0,
-        offsetClass
-      })
-    }
+const handleWheel = (e: WheelEvent) => {
+  e.preventDefault()
+  const now = Date.now()
+  if (now - lastWheelTime > 260) wheelAccumulator = 0
+
+  wheelAccumulator += e.deltaY
+
+  if (Math.abs(wheelAccumulator) > 42 && now - lastWheelTime > 360) {
+    emit('wheelNavigate', wheelAccumulator > 0 ? 1 : -1)
+    lastWheelTime = now
+    wheelAccumulator = 0
   }
-  
-  return result
-})
+}
 
-watch(visibleStack, (stack) => {
-  const primary = stack.find(card => card.isPrimary)
-  if (primary) {
-    cardDefinition.value = primary.summary !== DEFAULT_SUMMARY ? primary.summary : ''
+watch(activeCard, (card) => {
+  if (card) {
+    cardDefinition.value = card.summary !== DEFAULT_SUMMARY ? card.summary : ''
   }
 }, { immediate: true })
 </script>
@@ -395,226 +282,213 @@ watch(visibleStack, (stack) => {
 <style scoped>
 .atlas-stage {
   min-width: 0;
-  min-height: 100vh;
-  height: 100vh;
-  padding: 0 12px 0 8px;
-  background: #f4efe6;
+  min-height: 100%;
+  height: 100%;
+  padding: 0;
+  background: linear-gradient(180deg, #f8fafc 0%, #f3f6fa 100%);
   box-sizing: border-box;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .atlas-stage__inner {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 0;
+  height: 100%;
+  min-height: 720px;
+  display: grid;
+  place-items: center;
+  padding: 48px 32px 70px;
+  box-sizing: border-box;
 }
 
-.atlas-stack-wrapper {
+.atlas-card-shell {
+  --atlas-card-height: 560px;
   position: relative;
-  width: min(860px, calc(100% - 16px));
-  max-width: 860px;
+  width: min(880px, 100%);
+  max-width: 880px;
+  height: calc(var(--atlas-card-height) + 54px);
 }
 
-.atlas-stack {
+.atlas-card {
   position: relative;
   width: 100%;
-  perspective: 1200px;
-  /* The stack gets its height from the .is-primary relative element */
+  height: var(--atlas-card-height);
+  min-height: 0;
+  border: 1px solid rgba(219, 229, 240, 0.96);
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.12);
+  animation: atlas-card-enter 880ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Transitions */
-.card-stack-move,
-.card-stack-enter-active,
-.card-stack-leave-active {
-  transition: all 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+.dir-up .atlas-card {
+  --enter-y: -18px;
 }
 
-.card-stack-leave-active {
-  position: absolute !important;
+.dir-down .atlas-card {
+  --enter-y: 18px;
 }
 
-.card-stack-enter-from,
-.card-stack-leave-to {
-  opacity: 0 !important;
-}
-
-/* Sliding offsets for entering/leaving to match the visual stack */
-.dir-down .card-stack-leave-to {
-  transform: translateY(-200px) scale(0.9) !important;
-}
-.dir-down .card-stack-enter-from {
-  transform: translateY(200px) scale(0.9) !important;
-}
-
-.dir-up .card-stack-leave-to {
-  transform: translateY(200px) scale(0.9) !important;
-}
-.dir-up .card-stack-enter-from {
-  transform: translateY(-200px) scale(0.9) !important;
-}
-
-/* Card basic styling */
-.atlas-card {
+.atlas-card__loadbar {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%; /* forces background cards to exactly match the is-primary card height */
-  box-sizing: border-box;
-  border-radius: 20px;
-  background: #ffffff;
-  overflow: hidden;
-  transform-origin: center center;
-  transition: all 0.6s cubic-bezier(0.25, 1, 0.35, 1);
-  will-change: transform, opacity, box-shadow;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  right: 0;
+  z-index: 3;
+  padding: 16px 20px 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
-/* Primary determines height */
-.atlas-card.is-primary {
+.atlas-loadbar__track {
   position: relative;
-  height: auto; /* allows active card to dictate total height */
-  z-index: 100;
-  transform: translateY(0) scale(1);
-  opacity: 1;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.08); /* Strong shadow to separate from background */
+  height: 8px;
+  border-radius: 999px;
+  background: #edf2f7;
+  overflow: hidden;
 }
 
-/* PAST CARDS (going UP relative to primary) */
-.atlas-card.is-past-1 {
-  z-index: 90;
-  transform: translateY(-56px) scale(0.96);
-  opacity: 0.7;
-  pointer-events: none;
-}
-.atlas-card.is-past-2 {
-  z-index: 80;
-  transform: translateY(-108px) scale(0.92);
-  opacity: 0.35;
-  pointer-events: none;
+.atlas-loadbar__fill,
+.atlas-loadbar__glow {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
 }
 
-/* FUTURE CARDS (going DOWN relative to primary) */
-.atlas-card.is-future-1 {
-  z-index: 90;
-  transform: translateY(56px) scale(0.96);
-  opacity: 0.7;
-  pointer-events: none;
-}
-.atlas-card.is-future-2 {
-  z-index: 80;
-  transform: translateY(108px) scale(0.92);
-  opacity: 0.35;
-  pointer-events: none;
+.atlas-loadbar__fill {
+  background: linear-gradient(90deg, #0f1b33 0%, #2563eb 54%, #7dd3fc 100%);
+  animation: atlas-load-fill 1320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Content */
+.atlas-loadbar__glow {
+  width: 26%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 48%, rgba(255,255,255,0) 100%);
+  mix-blend-mode: screen;
+  animation: atlas-load-glow 1320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.atlas-loadbar__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.atlas-loadbar__step {
+  position: relative;
+  min-width: 0;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: atlas-step-explain 1320ms ease both;
+  animation-delay: calc(var(--step-index) * 170ms);
+}
+
+.atlas-loadbar__step::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
 .atlas-card__content {
-  padding: 40px 44px 48px;
+  height: 100%;
+  min-height: 0;
+  padding: 70px 48px 44px;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: atlas-content-in 720ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
 }
 
 .atlas-card__header h1 {
   margin: 0;
-  color: #1a1a1a;
+  color: #0f172a;
   font-size: 42px;
-  line-height: 1.15;
+  line-height: 1.08;
   font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   font-weight: 500;
-  letter-spacing: -0.01em;
-  transition: all 0.6s cubic-bezier(0.25, 1, 0.35, 1);
+  letter-spacing: 0;
 }
 
 .atlas-card__subtitle {
   margin: 10px 0 0;
-  color: #d4a574;
-  font-size: 17px;
+  color: #2563eb;
+  font-size: 16px;
   line-height: 1.4;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .atlas-card__meta {
-  margin-top: 16px;
-  color: #999999;
+  margin-top: 12px;
+  color: #64748b;
   font-size: 13px;
   line-height: 1.5;
-  font-weight: 400;
 }
 
 .atlas-card__definition {
-  margin-top: 28px;
+  margin-top: 22px;
 }
 
 .atlas-card__definition-input {
   width: 100%;
   height: 46px;
   padding: 0 18px;
-  border: 1.5px solid #e5e5e5;
-  border-radius: 12px;
-  background: #fafafa;
-  color: #333333;
-  font-size: 14.5px;
+  border: 1px solid #d7e2ee;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #273449;
+  font-size: 14px;
   outline: none;
   box-sizing: border-box;
-  transition: all 0.25s ease;
-}
-
-.atlas-card__definition-input:focus {
-  border-color: #b8b8b8;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
 }
 
 .atlas-card__definition-input::placeholder {
-  color: #bbbbbb;
-  font-style: italic;
+  color: #64748b;
 }
 
 .atlas-card__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
-  margin-top: 24px;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .atlas-card__tag {
-  height: 32px;
-  padding: 0 16px;
-  border-radius: 16px;
-  background: #2c2c3e;
-  color: #ffffff;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1d4ed8;
   display: inline-flex;
   align-items: center;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  cursor: default;
+  font-size: 12px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
 .atlas-card__section {
-  padding-top: 26px;
-  border-top: 1px solid #eeeeee;
-  margin-top: 30px;
-}
-
-.atlas-card__section--meaning {
-  margin-top: 32px;
-}
-
-.atlas-card__section--sources {
-  flex: 1;
-  min-height: 0;
-  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid #dbe5f0;
+  margin-top: 26px;
 }
 
 .atlas-card__eyebrow {
-  color: #aaaaaa;
-  font-size: 11px;
-  font-weight: 700;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
   letter-spacing: 0.18em;
   margin-bottom: 14px;
   text-transform: uppercase;
@@ -623,33 +497,32 @@ watch(visibleStack, (stack) => {
 .atlas-card__meaning,
 .atlas-card__empty {
   margin: 0;
-  color: #666666;
-  font-size: 15px;
+  color: #334155;
+  font-size: 14px;
   line-height: 1.75;
-  font-weight: 400;
 }
 
 .atlas-card__sources {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .atlas-card__source {
   min-width: 0;
   padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid #eeeeee;
-  background: #fafafa;
+  border-radius: 10px;
+  border: 1px solid #dbe5f0;
+  background: #f8fafc;
 }
 
 .atlas-card__source strong {
   display: block;
-  color: #222222;
-  font-size: 15px;
+  color: #172033;
+  font-size: 14px;
   line-height: 1.4;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -657,8 +530,8 @@ watch(visibleStack, (stack) => {
 
 .atlas-card__source span {
   display: block;
-  margin-top: 6px;
-  color: #999999;
+  margin-top: 4px;
+  color: #94a3b8;
   font-size: 12px;
   line-height: 1.4;
   white-space: nowrap;
@@ -668,7 +541,7 @@ watch(visibleStack, (stack) => {
 
 .atlas-card__source p {
   margin: 8px 0 0;
-  color: #666666;
+  color: #475569;
   font-size: 13px;
   line-height: 1.6;
   display: -webkit-box;
@@ -677,18 +550,21 @@ watch(visibleStack, (stack) => {
   overflow: hidden;
 }
 
-.atlas-stack__index {
+.atlas-card__index {
+  position: absolute;
+  top: calc(var(--atlas-card-height) + 18px);
+  left: 0;
+  right: 0;
   text-align: center;
-  color: #aaaaaa;
+  color: #94a3b8;
   font-size: 13px;
-  margin-top: 22px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .atlas-stage__empty {
   display: grid;
   place-items: center;
-  min-height: 100vh;
+  min-height: 100%;
   text-align: center;
 }
 
@@ -714,24 +590,99 @@ watch(visibleStack, (stack) => {
   cursor: pointer;
 }
 
+@keyframes atlas-card-enter {
+  0% {
+    opacity: 0;
+    filter: blur(12px);
+    transform: translateY(var(--enter-y, 18px)) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes atlas-load-fill {
+  0% { transform: scaleX(0); }
+  24% { transform: scaleX(0.32); }
+  48% { transform: scaleX(0.58); }
+  72% { transform: scaleX(0.82); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes atlas-load-glow {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+  12% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translateX(410%);
+  }
+}
+
+@keyframes atlas-step-explain {
+  0%, 18% {
+    color: #94a3b8;
+    opacity: 0.38;
+    transform: translateY(2px);
+  }
+  36%, 72% {
+    color: #0f1b33;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    color: #2563eb;
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes atlas-content-in {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1100px) {
   .atlas-stage {
     min-height: auto;
     height: auto;
-    padding: 20px 16px;
+    padding: 0;
+    overflow: visible;
   }
 
   .atlas-stage__inner {
-    padding: 24px 0;
+    min-height: 620px;
+    padding: 56px 16px 64px;
   }
 
-  .atlas-stack {
+  .atlas-card-shell {
+    --atlas-card-height: 500px;
     width: 100%;
-    max-width: 100%;
+    height: calc(var(--atlas-card-height) + 72px);
   }
 
   .atlas-card__content {
-    padding: 28px 24px 32px;
+    height: 100%;
+    min-height: 0;
+    padding: 70px 24px 32px;
+  }
+
+  .atlas-card__header h1 {
+    font-size: 34px;
+  }
+
+  .atlas-loadbar__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

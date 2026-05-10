@@ -462,7 +462,11 @@ const openScenicDetail = (item: ScenicSearchCardData) => {
   router.push({
     name: 'scenic-detail',
     params: { id: item.spotKey || item.id },
-    query: route.query,
+    query: {
+      ...route.query,
+      province: selectedProvince.value !== ALL_PROVINCES ? selectedProvince.value : item.subtitle.split('|')[0]?.trim() || undefined,
+      spot: item.title,
+    },
   })
 }
 
@@ -514,7 +518,7 @@ onUnmounted(() => {
           class="text-4xl font-bold tracking-wide text-[#1f2937]"
           style="font-family: 'PangMenZhengDao', serif;"
         >
-          旅天行
+          椿天社
         </router-link>
       </template>
     </Navigation>

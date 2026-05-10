@@ -28,6 +28,7 @@ import {
   type ScenicDetailData,
   type ScenicFactIconKey,
 } from '@/data/scenicDetails'
+import { repairUtf8Mojibake } from '@/utils/encoding'
 
 type SectionId = 'overview' | 'inclusions' | 'reviews' | 'faq' | 'essential'
 
@@ -35,9 +36,84 @@ const route = useRoute()
 const remoteDetail = ref<SpotDetailResponse | null>(null)
 
 const staticDetail = computed<ScenicDetailData | null>(() => {
-  const id = String(route.params.id ?? '')
+  const id = repairUtf8Mojibake(String(route.params.id ?? ''))
   return getScenicDetailById(id)
 })
+
+const fallbackImage =
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1600&auto=format&fit=crop'
+
+const createFallbackDetail = (id: string): ScenicDetailData => {
+  const spotName = repairUtf8Mojibake(normalizeQueryValue(route.query.spot)) || id.replace(/^xlsx-[^-]+-/, '') || '景点详情'
+  const city = repairUtf8Mojibake(normalizeQueryValue(route.query.province)) || '目的地'
+
+  return {
+    id,
+    title: spotName,
+    subtitle: city,
+    locationLabel: city,
+    breadcrumb: ['目的地', city, spotName],
+    reviewCount: 0,
+    reviewScore: 0,
+    price: {
+      current: '待查询',
+      note: '价格以实际预订页为准',
+    },
+    gallery: [
+      {
+        src: fallbackImage,
+        alt: spotName,
+      },
+    ],
+    overview: {
+      description: '景点详情正在加载或暂时不可用，请稍后刷新查看完整开放时间、地址与推荐信息。',
+      facts: [
+        { label: '游玩时间', value: '待补充', icon: 'duration' },
+        { label: '活动类型', value: '景点游览', icon: 'activity' },
+        { label: '开放时间', value: '待补充', icon: 'season' },
+        { label: '预订要求', value: '待补充', icon: 'group' },
+        { label: '适合人群', value: '全年龄', icon: 'age' },
+        { label: '所在城市', value: city, icon: 'season' },
+      ],
+    },
+    bookingPanel: {
+      dateOptions: ['今日可查', '明日可查', '周末可查'],
+      travelerSummary: '支持多人出行',
+      selectionHint: '',
+      contactHint: city,
+      reserveNote: '开放时间以景区当天公示为准',
+    },
+    itineraryDays: [
+      {
+        id: 'day-1',
+        title: '第 1 天',
+        summary: '建议结合开放时间灵活安排行程。',
+        media: {
+          src: fallbackImage,
+          alt: spotName,
+        },
+        mapLabel: '查看位置',
+      },
+    ],
+    includes: ['开放时间：待补充', '游玩时间：待补充', '预订要求：待补充'],
+    excludes: ['往返交通', '个人消费', '未注明的额外项目'],
+    reviews: [],
+    faqs: [
+      {
+        id: 'faq-1',
+        question: '这个景点需要预订吗？',
+        answer: '暂未提供预订说明',
+      },
+      {
+        id: 'faq-2',
+        question: '开放时间是什么？',
+        answer: '暂未提供开放时间',
+      },
+    ],
+    essentialInfo: ['具体地址：待补充', '开放时间：待补充', '建议游玩时长：待补充'],
+    similarTours: [],
+  }
+}
 
 const detail = computed<ScenicDetailData | null>(() => {
   if (remoteDetail.value) {
@@ -126,7 +202,8 @@ const detail = computed<ScenicDetailData | null>(() => {
     }
   }
 
-  return staticDetail.value
+  const id = repairUtf8Mojibake(String(route.params.id ?? ''))
+  return staticDetail.value || (id ? createFallbackDetail(id) : null)
 })
 
 const currentImageIndex = ref(0)
@@ -135,17 +212,17 @@ const openFaqIds = ref<string[]>([])
 const activeTab = ref<SectionId>('overview')
 const selectedDate = ref('')
 const travelerCount = ref(3)
-const selectedPackage = ref('鏍囧噯鍑鸿')
+const selectedPackage = ref('标准出行')
 const isSaved = ref(false)
 
-const packageOptions = ['鏍囧噯鍑鸿', '杞诲ア鍗囩骇', '浜插瓙鍚屾父']
+const packageOptions = ['标准出行', '轻奢升级', '亲子同游']
 
 const tabs: { key: SectionId; label: string }[] = [
-  { key: 'overview', label: '姒傝' },
-  { key: 'inclusions', label: '璐圭敤璇存槑' },
-  { key: 'reviews', label: '鐢ㄦ埛璇勪环' },
-  { key: 'faq', label: '甯歌闂' },
-  { key: 'essential', label: '鍑鸿椤荤煡' },
+  { key: 'overview', label: '概览' },
+  { key: 'inclusions', label: '费用说明' },
+  { key: 'reviews', label: '用户评价' },
+  { key: 'faq', label: '常见问题' },
+  { key: 'essential', label: '出行须知' },
 ]
 
 const normalizeQueryValue = (value: unknown) => {
@@ -161,7 +238,7 @@ const searchContextLabel = computed(() => {
   const spot = normalizeQueryValue(route.query.spot)
   const date = normalizeQueryValue(route.query.date)
 
-  return [province, spot, date].filter(Boolean).join(' 路 ')
+  return [province, spot, date].filter(Boolean).join(' · ')
 })
 
 const currentImage = computed(() => detail.value?.gallery[currentImageIndex.value] ?? null)
@@ -220,15 +297,20 @@ const resolveFactIcon = (icon: ScenicFactIconKey) => {
 watch(
   () => route.params.id,
   async () => {
-    const id = String(route.params.id ?? '')
-    remoteDetail.value = await travelDiscoveryService.getSpotDetail(id)
+    const id = repairUtf8Mojibake(String(route.params.id ?? ''))
+    try {
+      remoteDetail.value = await travelDiscoveryService.getSpotDetail(id)
+    } catch (error) {
+      console.error('Failed to load scenic detail:', error)
+      remoteDetail.value = null
+    }
     currentImageIndex.value = 0
     openDayIds.value = []
     openFaqIds.value = []
     activeTab.value = 'overview'
     selectedDate.value = detail.value?.bookingPanel.dateOptions[0] ?? ''
     travelerCount.value = 3
-    selectedPackage.value = '鏍囧噯鍑鸿'
+    selectedPackage.value = '标准出行'
     window.scrollTo({ top: 0, behavior: 'smooth' })
   },
   { immediate: true },
@@ -246,7 +328,8 @@ watch(
           class="text-4xl font-bold tracking-wide text-[#1f2937]"
           style="font-family: 'PangMenZhengDao', serif;"
         >
-          妞垮ぉ绀?        </router-link>
+          椿天社
+        </router-link>
       </template>
     </Navigation>
 
@@ -259,10 +342,10 @@ watch(
               class="inline-flex items-center gap-2 text-[13px] font-medium text-[#5d6b82] transition hover:text-[#1b9d98]"
             >
               <ArrowLeft class="h-4 w-4" />
-              <span>杩斿洖鎼滅储缁撴灉</span>
+              <span>返回搜索结果</span>
             </router-link>
             <p v-if="searchContextLabel" class="text-[12px] text-[#8c95a8]">
-              褰撳墠涓婁笅鏂囷細{{ searchContextLabel }}
+              当前上下文：{{ searchContextLabel }}
             </p>
           </div>
         </div>
@@ -287,7 +370,8 @@ watch(
                   v-if="index === 3 && detail.gallery.length > 4"
                   class="absolute inset-0 flex items-center justify-center bg-[#10223c]/62 text-[11px] font-semibold text-white"
                 >
-                  +{{ detail.gallery.length - 4 }} 寮犵収鐗?                </div>
+                  +{{ detail.gallery.length - 4 }} 张照片
+                </div>
               </button>
             </div>
 
@@ -318,7 +402,7 @@ watch(
 
                 <div class="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-2 text-[12px] font-medium text-[#475569] shadow-[0_12px_26px_rgba(15,23,42,0.12)]">
                   <Share2 class="h-3.5 w-3.5" />
-                  <span>{{ detail.gallery.length }} 寮犲浘</span>
+                  <span>{{ detail.gallery.length }} 张图</span>
                 </div>
               </div>
             </div>
@@ -403,7 +487,7 @@ watch(
                     </div>
 
                     <div>
-                      <h2 class="text-[18px] font-semibold text-[#22304f]">鏅偣姒傝</h2>
+                      <h2 class="text-[18px] font-semibold text-[#22304f]">景点概览</h2>
                       <p class="mt-4 max-w-[760px] text-[14px] leading-7 text-[#69758c]">
                         {{ detail.overview.description }}
                       </p>
@@ -440,7 +524,7 @@ watch(
                     <div>
                       <div class="space-y-8">
                         <div>
-                          <h2 class="text-[18px] font-semibold text-[#22304f]">Itinerary</h2>
+                          <h2 class="text-[18px] font-semibold text-[#22304f]">行程安排</h2>
                           <div class="mt-6 space-y-4">
                             <article
                               v-for="day in detail.itineraryDays"
@@ -498,7 +582,7 @@ watch(
                                 >
                                   <div class="flex items-center gap-2 text-[#22304f]">
                                     <Sparkles class="h-4.5 w-4.5 text-[#19b7b1]" />
-                                    <h3 class="text-[15px] font-semibold">浣忓瀹夋帓</h3>
+                                    <h3 class="text-[15px] font-semibold">住宿安排</h3>
                                   </div>
                                   <p class="mt-3 text-[14px] leading-7 text-[#68748b]">
                                     {{ day.accommodation.description }}
@@ -525,7 +609,7 @@ watch(
 
                         <div class="grid gap-6 xl:grid-cols-2">
                           <div class="rounded-[24px] border border-[#edf1f5] bg-white px-5 py-5">
-                            <h3 class="text-[16px] font-semibold text-[#22304f]">璐圭敤鍖呭惈</h3>
+                            <h3 class="text-[16px] font-semibold text-[#22304f]">费用包含</h3>
                             <ul class="mt-4 space-y-3">
                               <li
                                 v-for="item in detail.includes"
@@ -539,7 +623,7 @@ watch(
                           </div>
 
                           <div class="rounded-[24px] border border-[#edf1f5] bg-white px-5 py-5">
-                            <h3 class="text-[16px] font-semibold text-[#22304f]">璐圭敤涓嶅惈</h3>
+                            <h3 class="text-[16px] font-semibold text-[#22304f]">费用不含</h3>
                             <ul class="mt-4 space-y-3">
                               <li
                                 v-for="item in detail.excludes"
@@ -566,7 +650,7 @@ watch(
                     </div>
 
                     <div>
-                      <h2 class="text-[18px] font-semibold text-[#22304f]">鐢ㄦ埛璇勪环</h2>
+                      <h2 class="text-[18px] font-semibold text-[#22304f]">用户评价</h2>
                       <div class="mt-6 space-y-4">
                         <article
                           v-for="review in detail.reviews"
@@ -610,7 +694,7 @@ watch(
                     </div>
 
                     <div>
-                      <h2 class="text-[18px] font-semibold text-[#22304f]">甯歌闂</h2>
+                      <h2 class="text-[18px] font-semibold text-[#22304f]">常见问题</h2>
                       <div class="mt-6 space-y-3">
                         <article
                           v-for="faq in detail.faqs"
@@ -647,7 +731,7 @@ watch(
                     </div>
 
                     <div>
-                      <h2 class="text-[18px] font-semibold text-[#22304f]">鍑鸿椤荤煡</h2>
+                      <h2 class="text-[18px] font-semibold text-[#22304f]">出行须知</h2>
                       <div class="mt-6 grid gap-4 sm:grid-cols-3">
                         <div
                           v-for="item in detail.essentialInfo"
@@ -665,14 +749,14 @@ watch(
               <section class="mt-12">
                 <div class="flex items-center justify-between gap-4">
                   <div>
-                    <h2 class="text-[28px] font-semibold tracking-[-0.03em] text-[#22304f]">鐩镐技鏅偣</h2>
+                    <h2 class="text-[28px] font-semibold tracking-[-0.03em] text-[#22304f]">相似景点</h2>
                     <p class="mt-2 text-[14px] text-[#8690a3]">继续沿着同一类场景浏览，后续可替换为真实推荐数据。</p>
                   </div>
                   <router-link
                     :to="{ name: 'scenic-search', query: route.query }"
                     class="inline-flex items-center rounded-full bg-[#21bbb4] px-5 py-3 text-[13px] font-semibold text-white shadow-[0_14px_26px_rgba(33,187,180,0.24)] transition hover:bg-[#18a59f]"
                   >
-                    鏌ョ湅鍏ㄩ儴
+                    查看全部
                   </router-link>
                 </div>
 
@@ -698,14 +782,15 @@ watch(
                           <p class="mt-2 text-[30px] font-semibold leading-none text-white">{{ tour.price }}</p>
                         </div>
                         <span class="rounded-full bg-[#21bbb4] px-4 py-2 text-[12px] font-semibold text-white">
-                          鏌ョ湅璇︽儏
+                          查看详情
                         </span>
                       </div>
                     </div>
                     <div class="px-5 pb-5 pt-4">
                       <h3 class="text-[19px] font-semibold text-[#22304f]">{{ tour.title }}</h3>
                       <p class="mt-2 text-[13px] leading-6 text-[#8690a3]">
-                        鍚屼竴妯℃澘涓嬬殑鍙︿竴鏉＄ず渚嬫櫙鐐硅鎯咃紝鍚庣画鍙洿鎺ユ浛鎹负鐪熷疄鎺ㄨ崘鍐呭銆?                      </p>
+                        同一类型下的另一条景点详情，后续可直接替换为真实推荐内容。
+                      </p>
                     </div>
                   </router-link>
                 </div>
@@ -716,13 +801,14 @@ watch(
               <div class="rounded-[28px] border border-[#edf1f5] bg-white px-5 py-5 shadow-[0_20px_50px_rgba(15,23,42,0.06)]">
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ff7d72]">棰勮淇℃伅</p>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ff7d72]">预订信息</p>
                     <p class="mt-3 text-[34px] font-semibold leading-none tracking-[-0.04em] text-[#22304f]">
                       {{ detail.price.current }}
                     </p>
                     <p class="mt-2 text-[12px] text-[#9aa3b5]">
                       <span v-if="detail.price.previous" class="mr-2 line-through">{{ detail.price.previous }}</span>
-                      姣忎汉璧?                    </p>
+                      每人起
+                    </p>
                   </div>
                   <span
                     v-if="detail.price.discountLabel"
@@ -734,7 +820,7 @@ watch(
 
                 <div class="mt-6 space-y-4">
                   <label class="block">
-                    <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">鍑哄彂鏃ユ湡</span>
+                    <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">出发日期</span>
                     <select
                       v-model="selectedDate"
                       class="h-12 w-full rounded-[16px] border border-[#e6edf3] bg-[#fbfcfd] px-4 text-[14px] text-[#33415f] outline-none transition focus:border-[#19b7b1]"
@@ -747,7 +833,7 @@ watch(
 
                   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
                     <label class="block">
-                      <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">鍑鸿浜烘暟</span>
+                      <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">出行人数</span>
                       <div class="flex h-12 items-center justify-between rounded-[16px] border border-[#e6edf3] bg-[#fbfcfd] px-4">
                         <span class="text-[14px] text-[#33415f]">{{ travelerCount }} 人</span>
                         <div class="flex items-center gap-2">
@@ -770,7 +856,7 @@ watch(
                     </label>
 
                     <label class="block">
-                      <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">濂楅閫夋嫨</span>
+                      <span class="mb-2 block text-[12px] font-medium text-[#7f899d]">套餐选择</span>
                       <select
                         v-model="selectedPackage"
                         class="h-12 w-full rounded-[16px] border border-[#e6edf3] bg-[#fbfcfd] px-4 text-[14px] text-[#33415f] outline-none transition focus:border-[#19b7b1]"
@@ -787,7 +873,8 @@ watch(
                   type="button"
                   class="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-[#ff8447] to-[#ff4f8e] text-[14px] font-semibold text-white shadow-[0_16px_28px_rgba(255,102,127,0.24)] transition hover:translate-y-[-1px]"
                 >
-                  鏌ョ湅鍙璁㈡€?                </button>
+                  查看可预订时间
+                </button>
 
                 <div class="mt-5 rounded-[18px] bg-[#f8fafc] px-4 py-4">
                   <p class="text-[12px] font-medium text-[#6f7c92]">{{ detail.bookingPanel.contactHint }}</p>
@@ -795,7 +882,7 @@ watch(
                     type="button"
                     class="mt-4 inline-flex h-10 w-full items-center justify-center rounded-full border border-[#d9e4ec] bg-white text-[13px] font-medium text-[#50607a] transition hover:border-[#19b7b1] hover:text-[#19b7b1]"
                   >
-                    鍜ㄨ琛岀▼椤鹃棶
+                    咨询行程顾问
                   </button>
                 </div>
 
@@ -813,14 +900,16 @@ watch(
               <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#eef7f8] text-[#19b7b1]">
                 <MapPin class="h-7 w-7" />
               </div>
-              <h1 class="mt-6 text-[30px] font-semibold tracking-[-0.03em] text-[#22304f]">鏅偣鏆傛湭鎵惧埌</h1>
+              <h1 class="mt-6 text-[30px] font-semibold tracking-[-0.03em] text-[#22304f]">景点暂未找到</h1>
               <p class="mt-4 text-[15px] leading-7 text-[#71809a]">
-                褰撳墠璺敱娌℃湁鍖归厤鍒板搴旂殑绀轰緥鏅偣鏁版嵁銆傚悗缁帴鍏ョ湡瀹炴帴鍙ｅ悗锛岃繖閲屼細澶嶇敤鍚屼竴濂楄鎯呮ā鏉垮睍绀虹湡瀹炴櫙鐐瑰唴瀹广€?              </p>
+                当前路由没有匹配到对应的示例景点数据。后续接入真实接口后，这里会复用同一套详情模板展示真实景点内容。
+              </p>
               <router-link
                 :to="{ name: 'scenic-search', query: route.query }"
                 class="mt-8 inline-flex items-center rounded-full bg-[#20bcb5] px-5 py-3 text-[14px] font-semibold text-white shadow-[0_16px_28px_rgba(32,188,181,0.24)] transition hover:bg-[#17a49d]"
               >
-                杩斿洖鎼滅储椤?              </router-link>
+                返回搜索页
+              </router-link>
             </div>
           </section>
         </template>

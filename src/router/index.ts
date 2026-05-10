@@ -1,23 +1,36 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import Home from '@/views/Home.vue'
-import About from '@/views/About.vue'
-import Login from '@/views/Login.vue'
-import Register from '@/views/Register.vue'
-import ForgotPassword from '@/views/ForgotPassword.vue'
-import ResetPassword from '@/views/ResetPassword.vue'
-import Community from '@/views/Community.vue'
-import Publish from '@/views/Publish.vue'
-import Profile from '@/views/Profile.vue'
-import CreatorHome from '@/views/CreatorHome.vue'
-import TrainTickets from '@/views/TrainTickets.vue'
-import Notifications from '@/views/Notifications.vue'
-import Assistant from '@/views/Assistant.vue'
-import Itinerary from '@/views/Itinerary.vue'
-import ExploreLanding from '@/views/ExploreLanding.vue'
-import ScenicSearch from '@/views/ScenicSearch.vue'
-import ScenicDetail from '@/views/ScenicDetail.vue'
 import { safeGetSupabaseSession, safeSupabaseSignOut, supabase } from '@/utils/supabase'
 import { useToast } from '@/composables/useToast'
+
+const Home = () => import('@/views/Home.vue')
+const About = () => import('@/views/About.vue')
+const Login = () => import('@/views/Login.vue')
+const Register = () => import('@/views/Register.vue')
+const ForgotPassword = () => import('@/views/ForgotPassword.vue')
+const ResetPassword = () => import('@/views/ResetPassword.vue')
+const Community = () => import('@/views/Community.vue')
+const Publish = () => import('@/views/Publish.vue')
+const Profile = () => import('@/views/Profile.vue')
+const CreatorHome = () => import('@/views/CreatorHome.vue')
+const TrainTickets = () => import('@/views/TrainTickets.vue')
+const Notifications = () => import('@/views/Notifications.vue')
+const Assistant = () => import('@/views/Assistant.vue')
+const Itinerary = () => import('@/views/Itinerary.vue')
+const ExploreLanding = () => import('@/views/ExploreLanding.vue')
+const ScenicSearch = () => import('@/views/ScenicSearch.vue')
+const ScenicDetail = () => import('@/views/ScenicDetail.vue')
+const Shop = () => import('@/views/Shop.vue')
+const ProductCatalogue = () => import('@/views/ProductCatalogue.vue')
+const ProductDetail = () => import('@/views/ProductDetail.vue')
+const Orders = () => import('@/views/Orders.vue')
+const PaymentResult = () => import('@/views/PaymentResult.vue')
+const Cart = () => import('@/views/Cart.vue')
+const CheckoutInformation = () => import('@/views/CheckoutInformation.vue')
+const CheckoutConfirmation = () => import('@/views/CheckoutConfirmation.vue')
+const CheckoutPayment = () => import('@/views/CheckoutPayment.vue')
+const CheckoutPending = () => import('@/views/CheckoutPending.vue')
+const CheckoutSuccess = () => import('@/views/CheckoutSuccess.vue')
+const PaymentConfirmPreview = () => import('@/views/PaymentConfirmPreview.vue')
 
 const routes: RouteRecordRaw[] = [
   {
@@ -100,6 +113,72 @@ const routes: RouteRecordRaw[] = [
     component: TrainTickets,
   },
   {
+    path: '/shop',
+    name: 'shop',
+    component: Shop,
+  },
+  {
+    path: '/orders',
+    name: 'orders',
+    component: Orders,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/cart',
+    name: 'cart',
+    component: Cart,
+  },
+  {
+    path: '/checkout/information',
+    name: 'checkout-information',
+    component: CheckoutInformation,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checkout/confirmation',
+    name: 'checkout-confirmation',
+    component: CheckoutConfirmation,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checkout/payment',
+    name: 'checkout-payment',
+    component: CheckoutPayment,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checkout/pending',
+    name: 'checkout-pending',
+    component: CheckoutPending,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checkout/success',
+    name: 'checkout-success',
+    component: CheckoutSuccess,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/payment/result',
+    name: 'payment-result',
+    component: PaymentResult,
+  },
+  {
+    path: '/payment-confirm-preview',
+    name: 'payment-confirm-preview',
+    component: PaymentConfirmPreview,
+  },
+  {
+    path: '/product-catalogue',
+    name: 'product-catalogue',
+    component: ProductCatalogue,
+  },
+  {
+    path: '/product/:id',
+    name: 'product-detail',
+    component: ProductDetail,
+  },
+  {
     path: '/login',
     name: 'login',
     component: Login,
@@ -135,6 +214,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'qa-test', name: 'admin-qa-test', component: () => import('@/views/admin/AdminQATest.vue'), meta: { title: '测试问答' } },
       { path: 'api-logs', name: 'admin-api-logs', component: () => import('@/views/admin/ApiLogs.vue'), meta: { title: 'API 日志' } },
       { path: 'datasources', name: 'admin-datasources', component: () => import('@/views/admin/DataSourceManager.vue'), meta: { title: '数据源管理' } },
+      { path: 'products', name: 'admin-products', component: () => import('@/views/admin/ProductManager.vue'), meta: { title: '商品管理' } },
+      { path: 'orders', name: 'admin-orders', component: () => import('@/views/admin/OrderManager.vue'), meta: { title: '订单管理' } },
     ],
   },
 ]
@@ -150,26 +231,69 @@ const router = createRouter({
   },
 })
 
+const ADMIN_ROLE_CACHE_TTL = 60 * 1000
+const adminRoles = new Set(['admin', 'moderator'])
+let cachedAuthRole: { userId: string; role: string; expiresAt: number } | null = null
+
+const clearCachedAuthRole = () => {
+  cachedAuthRole = null
+}
+
+const getCachedAuthRole = (userId: string) => {
+  if (!cachedAuthRole || cachedAuthRole.userId !== userId || cachedAuthRole.expiresAt <= Date.now()) {
+    return null
+  }
+
+  return cachedAuthRole.role
+}
+
+const setCachedAuthRole = (userId: string, role: string) => {
+  cachedAuthRole = {
+    userId,
+    role,
+    expiresAt: Date.now() + ADMIN_ROLE_CACHE_TTL,
+  }
+}
+
 router.beforeEach(async (to, from, next) => {
   try {
+    if (!to.meta.requiresAuth && !to.meta.requiresAdmin) {
+      clearCachedAuthRole()
+      next()
+      return
+    }
+
     const session = await safeGetSupabaseSession()
     const { showToast } = useToast()
 
     if (session?.user) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .single()
+      let role = getCachedAuthRole(session.user.id)
+      let profileError: unknown = null
+
+      if (!role) {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+
+        role = profile?.role || ''
+        profileError = error
+
+        if (role) {
+          setCachedAuthRole(session.user.id, role)
+        }
+      }
 
       if (profileError) {
         console.error('Error fetching profile for ban check:', profileError)
       }
 
-      if (profile?.role === 'banned') {
+      if (role === 'banned') {
         console.log('User is banned, redirecting to login.')
         try {
           await safeSupabaseSignOut()
+          clearCachedAuthRole()
         } catch (e) {
           console.error('Error signing out:', e)
         }
@@ -181,11 +305,12 @@ router.beforeEach(async (to, from, next) => {
         }
       }
 
-      if (to.meta.requiresAdmin && profile?.role !== 'admin' && profile?.role !== 'moderator') {
+      if (to.meta.requiresAdmin && !adminRoles.has(role || '')) {
         next('/')
         return
       }
     } else if (to.meta.requiresAuth) {
+      clearCachedAuthRole()
       next('/login')
       return
     }

@@ -8,6 +8,7 @@ import { Heart, Users, MapPin, ArrowDown } from 'lucide-vue-next';
 
 const scrollY = ref(0);
 const founderAvatar = ref('/founder-avatar.jpg');
+const aboutHeroImage = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=72&w=1600&auto=format&fit=crop&fm=webp';
 
 const handleAvatarError = (event: Event) => {
   (event.target as HTMLImageElement).src =
@@ -19,6 +20,11 @@ const handleScroll = () => {
 };
 
 onMounted(() => {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'image';
+  link.href = aboutHeroImage;
+  document.head.appendChild(link);
   window.addEventListener('scroll', handleScroll);
 });
 
@@ -46,12 +52,20 @@ onUnmounted(() => {
     <main>
       <div id="hero" class="relative flex h-[1200px] w-full flex-col items-center overflow-hidden pt-32 lg:pt-64">
         <div
-          class="absolute top-0 left-0 z-0 h-full w-full bg-cover bg-center pointer-events-none"
+          class="about-hero-bg absolute top-0 left-0 z-0 h-full w-full bg-cover bg-center pointer-events-none"
           :style="{
-            backgroundImage: `url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop')`,
             transform: `translateY(${scrollY * 0.5}px)`,
           }"
         >
+          <img
+            class="absolute inset-0 h-full w-full object-cover"
+            :src="aboutHeroImage"
+            alt=""
+            decoding="async"
+            fetchpriority="high"
+            loading="eager"
+          />
+          <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,31,38,0.28),rgba(9,38,44,0.42))]"></div>
           <div class="absolute inset-0 bg-gradient-to-b from-transparent via-primary/30 to-primary"></div>
           <div class="absolute inset-0 bg-gradient-to-t from-primary via-transparent to-transparent opacity-80"></div>
         </div>
@@ -214,3 +228,12 @@ onUnmounted(() => {
     <Footer />
   </div>
 </template>
+
+<style scoped>
+.about-hero-bg {
+  background-color: #0b232b;
+  background-image:
+    radial-gradient(circle at 18% 20%, rgba(241, 211, 154, 0.2), transparent 28%),
+    linear-gradient(180deg, #17353a 0%, #0b232b 56%, #071820 100%);
+}
+</style>

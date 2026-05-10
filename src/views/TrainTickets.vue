@@ -8,6 +8,7 @@ import { supabase } from '@/utils/supabase';
 import { cityMap } from '@/utils/cityData';
 
 const scrollY = ref(0);
+const trainHeroImage = 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=72&w=1600&auto=format&fit=crop&fm=webp';
 const fromStation = ref('北京');
 const toStation = ref('上海');
 const date = ref('');
@@ -262,6 +263,11 @@ const queryTickets = async () => {
 };
 
 onMounted(() => {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'image';
+  link.href = trainHeroImage;
+  document.head.appendChild(link);
   window.addEventListener('scroll', handleScroll);
 });
 
@@ -288,10 +294,17 @@ onUnmounted(() => {
         <div 
           class="absolute top-0 left-0 w-full h-full z-0 bg-cover bg-center pointer-events-none"
           :style="{ 
-            backgroundImage: `url('https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop')`,
             transform: `translateY(${scrollY * 0.5}px)`
           }"
         >
+          <img
+            class="absolute inset-0 h-full w-full object-cover"
+            :src="trainHeroImage"
+            alt=""
+            decoding="async"
+            fetchpriority="high"
+            loading="eager"
+          />
           <!-- Gradient Overlays -->
           <div class="absolute inset-0 bg-gradient-to-b from-transparent via-primary/30 to-primary"></div>
           <div class="absolute inset-0 bg-gradient-to-t from-primary via-transparent to-transparent opacity-80"></div>

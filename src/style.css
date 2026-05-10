@@ -4,9 +4,19 @@
 
 @font-face {
   font-family: 'PangMenZhengDao';
+  src: url('/fonts/PangMenZhengDaoWordmark.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+5929, U+693F, U+793E;
+}
+
+@font-face {
+  font-family: 'PangMenZhengDao';
   src: url('/fonts/PangMenZhengDaoCuShuTi.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 
 :root {

@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 
 
 class EmbeddingProfile(models.Model):
@@ -255,3 +256,169 @@ class TravelDiscoverySignal(models.Model):
 
     def __str__(self):
         return f"{self.user_id}:{self.signal_type}:{self.spot_key}"
+
+
+class Product(models.Model):
+    sku = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    category = models.CharField(max_length=80, blank=True, default="")
+    image_url = models.TextField(blank=True, default="")
+    price_cents = models.PositiveIntegerField(default=0)
+    currency = models.CharField(max_length=8, default="CNY")
+    is_active = models.BooleanField(default=True)
+    stock_total = models.PositiveIntegerField(default=0)
+    stock_reserved = models.PositiveIntegerField(default=0)
+    stock_sold = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "products"
+        managed = True
+        ordering = ["-updated_at", "-id"]
+
+    @property
+    def available_stock(self) -> int:
+        return max(0, int(self.stock_total or 0) - int(self.stock_reserved or 0) - int(self.stock_sold or 0))
+
+    def __str__(self):
+        return f"{self.sku}:{self.name}"
+
+
+class CommerceOrder(models.Model):
+    STATUS_CHOICES = [
+        ("pending_payment", "Pending Payment"),
+        ("payment_created", "Payment Created"),
+        ("paid", "Paid"),
+        ("payment_failed", "Payment Failed"),
+        ("canceled", "Canceled"),
+        ("expired", "Expired"),
+    ]
+    PAYMENT_METHOD_CHOICES = [
+        ("alipay", "Alipay"),
+    ]
+
+    order_no = models.CharField(max_length=32, unique=True, db_index=True)
+    user_id = models.CharField(max_length=64, db_index=True)
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="pending_payment", db_index=True)
+    subtotal_cents = models.PositiveIntegerField(default=0)
+    shipping_cents = models.PositiveIntegerField(default=0)
+    discount_cents = models.PositiveIntegerField(default=0)
+    total_amount_cents = models.PositiveIntegerField(default=0)
+    currency = models.CharField(max_length=8, default="CNY")
+    payment_method = models.CharField(max_length=16, choices=PAYMENT_METHOD_CHOICES, default="alipay")
+    shipping_method = models.CharField(max_length=80, blank=True, default="standard")
+    shipping_address = models.JSONField(blank=True, default=dict)
+    contact_email = models.EmailField(blank=True, default="")
+    contact_phone = models.CharField(max_length=40, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "commerce_orders"
+        managed = True
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.order_no}:{self.status}"
+
+
+class CommerceOrderItem(models.Model):
+    order = models.ForeignKey(CommerceOrder, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, null=True, blank=True, on_delete=models.SET_NULL, related_name="commerce_order_items")
+    product_snapshot = models.JSONField(blank=True, default=dict)
+    sku = models.CharField(max_length=64, blank=True, default="")
+    name = models.CharField(max_length=200)
+    image_url = models.TextField(blank=True, default="")
+    unit_price_cents = models.PositiveIntegerField(default=0)
+    quantity = models.PositiveIntegerField(default=1)
+    line_total_cents = models.PositiveIntegerField(default=0)
+    selected_size = models.CharField(max_length=40, blank=True, default="")
+    selected_color = models.CharField(max_length=80, blank=True, default="")
+    cart_item_id = models.CharField(max_length=160, blank=True, default="")
+    metadata = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "commerce_order_items"
+        managed = True
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.order_id}:{self.sku or self.name} x {self.quantity}"
+
+
+class PaymentOrder(models.Model):
+    STATUS_CHOICES = [
+        ("pending_payment", "Pending Payment"),
+        ("payment_created", "Payment Created"),
+        ("paid", "Paid"),
+        ("payment_failed", "Payment Failed"),
+        ("canceled", "Canceled"),
+        ("expired", "Expired"),
+    ]
+    PAYMENT_TYPE_CHOICES = [
+        ("alipay", "Alipay"),
+        ("wxpay", "WeChat Pay"),
+    ]
+
+    user_id = models.CharField(max_length=64, db_index=True)
+    commerce_order = models.ForeignKey(CommerceOrder, null=True, blank=True, on_delete=models.SET_NULL, related_name="payments")
+    product = models.ForeignKey(Product, null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
+    product_snapshot = models.JSONField(blank=True, default=dict)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price_cents = models.PositiveIntegerField(default=0)
+    total_amount_cents = models.PositiveIntegerField(default=0)
+    currency = models.CharField(max_length=8, default="CNY")
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="pending_payment", db_index=True)
+    payment_provider = models.CharField(max_length=24, default="zpay")
+    payment_type = models.CharField(max_length=16, choices=PAYMENT_TYPE_CHOICES, default="alipay")
+    out_trade_no = models.CharField(max_length=32, unique=True, db_index=True)
+    zpay_trade_no = models.CharField(max_length=80, blank=True, default="")
+    zpay_order_id = models.CharField(max_length=80, blank=True, default="")
+    pay_url = models.TextField(blank=True, default="")
+    client_request_id = models.CharField(max_length=80, blank=True, default="", db_index=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "payment_orders"
+        managed = True
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "client_request_id"],
+                condition=~Q(client_request_id=""),
+                name="unique_payment_order_client_request_per_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.out_trade_no}:{self.status}"
+
+
+class PaymentEvent(models.Model):
+    order = models.ForeignKey(PaymentOrder, null=True, blank=True, on_delete=models.SET_NULL, related_name="events")
+    source = models.CharField(max_length=24, default="zpay")
+    event_type = models.CharField(max_length=40, default="notify")
+    signature_valid = models.BooleanField(default=False)
+    amount_matches = models.BooleanField(default=False)
+    processed = models.BooleanField(default=False)
+    payload = models.JSONField(blank=True, default=dict)
+    message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "payment_events"
+        managed = True
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.source}:{self.event_type}:{self.processed}"

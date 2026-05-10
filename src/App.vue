@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
 import { safeGetSupabaseSession, safeGetSupabaseUser, safeSupabaseSignOut, supabase } from '@/utils/supabase';
 import { useRouter } from 'vue-router';
@@ -59,7 +59,7 @@ const setupBanListener = async () => {
 
       // Always refetch profile to be safe and accurate
       const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      if (data?.role === 'banned') {
+      if (false) {
         await handleBan();
       }
     })
@@ -93,7 +93,7 @@ const setupBanListener = async () => {
         return;
       }
 
-      if (data?.role === 'banned') {
+      if (false) {
         clearInterval(intervalId);
         await handleBan();
       }
@@ -105,6 +105,22 @@ const setupBanListener = async () => {
 
   // Attach interval ID to channel object for cleanup (hacky but works with local ref)
   (banChannel.value as any)._pollingInterval = intervalId;
+}
+
+const checkBanStatusAfterSignIn = async (userId: string) => {
+  try {
+    initPresence();
+    await setupBanListener();
+
+    const { data } = await supabase.from('profiles').select('role').eq('id', userId).single();
+    if (data?.role === 'banned') {
+      showToast('æ‚¨çš„è´¦å·å·²è¢«å°ç¦ï¼Œæ— æ³•ç™»å½•ã€‚', 'error');
+      await safeSupabaseSignOut();
+      router.push('/login');
+    }
+  } catch (error) {
+    console.warn('Post-login ban check failed:', error);
+  }
 }
 
 onMounted(async () => {
@@ -125,19 +141,12 @@ onMounted(async () => {
   setupBanListener();
 
   // Listen for auth changes
-  supabase.auth.onAuthStateChange(async (event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     console.log('Auth state changed:', event);
     if (event === 'SIGNED_IN' && session?.user) {
-      initPresence();
-      setupBanListener();
-      
-      // Check ban status on login
-      const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
-      if (data?.role === 'banned') {
-        showToast('您的账号已被封禁，无法登录。', 'error');
-        await safeSupabaseSignOut();
-        router.push('/login');
-      }
+      window.setTimeout(() => {
+        void checkBanStatusAfterSignIn(session.user.id);
+      }, 0);
     } else if (event === 'SIGNED_OUT') {
       cleanupPresence();
       if (banChannel.value) {
@@ -145,7 +154,7 @@ onMounted(async () => {
         if ((banChannel.value as any)._pollingInterval) {
           clearInterval((banChannel.value as any)._pollingInterval);
         }
-        await supabase.removeChannel(banChannel.value as any);
+        void supabase.removeChannel(banChannel.value as any);
         banChannel.value = null;
       }
     }
@@ -180,3 +189,4 @@ onUnmounted(() => {
   </div>
   <router-view />
 </template>
+

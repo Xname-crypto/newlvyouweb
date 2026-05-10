@@ -324,8 +324,9 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import { Database, Plus, Settings, Trash2, X, RefreshCw, Table2, Eye, EyeOff, CloudUpload } from 'lucide-vue-next'
+import { apiUrl } from '@/utils/apiBase'
 
-const API_URL = '/api/datasources'
+const API_URL = apiUrl('/api/datasources')
 
 interface Connection {
   id: number

@@ -2,17 +2,15 @@
   <aside class="atlas-sidebar" :class="{ 'is-open': open }">
     <div class="atlas-sidebar__mobile-head">
       <span>Knowledge Atlas</span>
-      <button type="button" @click="$emit('close')">×</button>
+      <button type="button" @click="$emit('close')">x</button>
     </div>
 
     <section class="atlas-account">
       <div class="atlas-avatar">KA</div>
-
       <div class="atlas-account__meta">
         <strong>Knowledge Atlas</strong>
         <p>Guest account</p>
       </div>
-
       <div class="atlas-account__actions">
         <button type="button">Login</button>
         <button type="button">Register</button>
@@ -51,7 +49,7 @@
 
     <div class="atlas-divider"></div>
 
-    <section class="atlas-block">
+    <section class="atlas-block atlas-block--nav">
       <div class="atlas-block__head">
         <span>NAVIGATION</span>
       </div>
@@ -59,7 +57,7 @@
       <ul class="atlas-nav">
         <li>
           <button class="atlas-nav__item" type="button" @click="$emit('selectCategory', '')">
-            <span class="atlas-nav__dot atlas-nav__dot--ring"></span>
+            <span class="atlas-nav__diamond"></span>
             <strong>Tag / Libraries</strong>
           </button>
         </li>
@@ -113,7 +111,7 @@ defineEmits<{
 
 const moodTitle = computed(() => {
   if (props.stats.pending_count > 0) return 'Slow Return'
-  if (props.stats.dataset_count > 0) return 'Quiet Focus'
+  if (props.knowledgeBase) return 'Quiet Focus'
   return 'Blank Space'
 })
 
@@ -121,8 +119,8 @@ const moodText = computed(() => {
   if (props.stats.pending_count > 0) {
     return 'The feeling is a little distant right now, but a gentle pass will bring it back.'
   }
-  if (props.stats.dataset_count > 0) {
-    return 'The workspace is ready. Continue browsing the current cards.'
+  if (props.knowledgeBase) {
+    return 'The library is open. Keep refining the cards that matter most.'
   }
   return 'Create your first card to start building this library.'
 })
@@ -130,13 +128,14 @@ const moodText = computed(() => {
 
 <style scoped>
 .atlas-sidebar {
-  width: 318px;
-  flex-shrink: 0;
-  padding: 16px 18px 22px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 18px 22px 22px;
   border-right: 1px solid rgba(28, 31, 44, 0.08);
-  background: #fbf8f2;
-  overflow-y: auto;
+  background: #fbfaf6;
   box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .atlas-sidebar__mobile-head {
@@ -145,21 +144,21 @@ const moodText = computed(() => {
 
 .atlas-account {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 82px;
+  grid-template-columns: 46px minmax(0, 1fr) 72px;
   gap: 12px;
   align-items: start;
 }
 
 .atlas-avatar {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 999px;
-  background: #262843;
+  background: #252642;
   color: #fff8ef;
   display: grid;
   place-items: center;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .atlas-account__meta {
@@ -169,38 +168,38 @@ const moodText = computed(() => {
 
 .atlas-account__meta strong {
   display: block;
-  color: #202633;
+  color: #151827;
   font-size: 16px;
   line-height: 1.2;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .atlas-account__meta p {
   margin: 5px 0 0;
-  color: #928a80;
-  font-size: 13px;
+  color: #8d857b;
+  font-size: 12px;
 }
 
 .atlas-account__actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .atlas-account__actions button {
-  width: 82px;
-  height: 30px;
+  width: 72px;
+  height: 28px;
   border: 1px solid rgba(30, 32, 43, 0.12);
   border-radius: 999px;
   background: #fffdfa;
-  color: #323646;
-  font-size: 12px;
+  color: #232638;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .atlas-divider {
   height: 1px;
-  margin-top: 18px;
+  margin-top: 20px;
   background: rgba(30, 32, 43, 0.08);
 }
 
@@ -210,13 +209,13 @@ const moodText = computed(() => {
 
 .atlas-search input {
   width: 100%;
-  height: 42px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 14px;
   border: 1px solid rgba(29, 29, 39, 0.12);
-  border-radius: 14px;
+  border-radius: 10px;
   background: #fffdfa;
   color: #2f3138;
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
 }
@@ -230,30 +229,31 @@ const moodText = computed(() => {
   align-items: center;
   justify-content: space-between;
   color: #9c9488;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.28em;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
 }
 
 .atlas-block__head button {
   border: none;
   background: transparent;
   color: #9c9488;
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
   cursor: pointer;
 }
 
 .atlas-mood-card {
   margin-top: 14px;
   padding: 14px 14px 16px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: #2d2a49;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .atlas-mood-card__face {
-  height: 80px;
-  border-radius: 16px;
+  height: 68px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);
   display: flex;
   align-items: center;
@@ -262,31 +262,31 @@ const moodText = computed(() => {
 }
 
 .atlas-mood-card__eye {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 999px;
   border: 2px solid #fff0cb;
 }
 
 .atlas-mood-card__mouth {
-  width: 18px;
+  width: 16px;
   height: 2px;
   border-radius: 999px;
   background: #fff0cb;
 }
 
 .atlas-mood-card h4 {
-  margin: 18px 0 8px;
+  margin: 15px 0 7px;
   color: #fff8ef;
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .atlas-mood-card p {
   margin: 0;
   color: rgba(255, 248, 239, 0.78);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .atlas-nav {
@@ -301,8 +301,9 @@ const moodText = computed(() => {
 .atlas-nav__item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
+  min-height: 24px;
   border: none;
   background: transparent;
   padding: 0;
@@ -312,19 +313,24 @@ const moodText = computed(() => {
 }
 
 .atlas-nav__item strong {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.atlas-nav__dot,
+.atlas-nav__diamond {
+  flex-shrink: 0;
+}
+
+.atlas-nav__diamond {
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  transform: rotate(45deg);
 }
 
 .atlas-nav__dot {
-  flex-shrink: 0;
   border-radius: 999px;
-}
-
-.atlas-nav__dot--ring {
-  width: 7px;
-  height: 7px;
-  border: 1px solid rgba(31, 33, 46, 0.75);
 }
 
 .atlas-nav__dot--solid {
@@ -339,16 +345,16 @@ const moodText = computed(() => {
   border: 1px solid rgba(31, 33, 46, 0.45);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .atlas-sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    bottom: 0;
     z-index: 50;
-    transform: translateX(-100%);
+    width: min(320px, calc(100vw - 32px));
+    transform: translateX(-105%);
     transition: transform 0.22s ease;
-    box-shadow: 20px 0 50px rgba(15, 23, 42, 0.18);
+    box-shadow: 18px 0 40px rgba(15, 23, 42, 0.18);
   }
 
   .atlas-sidebar.is-open {
@@ -360,16 +366,14 @@ const moodText = computed(() => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 18px;
-    color: #23253f;
-    font-weight: 700;
   }
 
   .atlas-sidebar__mobile-head button {
-    width: 32px;
-    height: 32px;
-    border: none;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(30, 32, 43, 0.12);
     border-radius: 999px;
-    background: rgba(29, 29, 39, 0.06);
+    background: #fffdfa;
   }
 }
 </style>

@@ -405,15 +405,13 @@ onMounted(async () => {
   document.addEventListener('pointerdown', handleDocumentPointerDown)
   handleScroll()
   syncScenicBookingSelections()
-  await loadScenicBookingData()
+  requestAnimationFrame(() => {
+    heroEntered.value = true
+  })
+  void loadScenicBookingData()
   heroAutoplayTimer = window.setInterval(() => {
     nextHeroSlide()
   }, 5200)
-  requestAnimationFrame(() => {
-    window.setTimeout(() => {
-      heroEntered.value = true
-    }, 80)
-  })
 })
 
 onUnmounted(() => {
@@ -550,21 +548,25 @@ onUnmounted(() => {
           </div>
 
           <div id="destinations" class="mx-auto -mt-2 w-full max-w-[980px] px-4 md:px-0">
-            <div class="relative overflow-hidden rounded-[2px] bg-[rgba(84,90,92,0.12)] shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-[8px]">
-              <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.008)_28%,rgba(0,0,0,0.035)_100%)]" />
-              <div class="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.025),rgba(255,255,255,0.006)_18%,rgba(255,255,255,0)_42%,rgba(255,255,255,0)_58%,rgba(255,255,255,0.006)_82%,rgba(255,255,255,0.02))]" />
+            <div class="destination-glass-strip">
+              <div class="destination-glass-aura" />
+              <div class="destination-glass-sheen" />
+              <div class="destination-glass-caustic destination-glass-caustic-a" />
+              <div class="destination-glass-caustic destination-glass-caustic-b" />
 
-              <div class="relative z-10 grid min-h-[62px] md:grid-cols-3">
+              <div class="relative z-10 grid min-h-[86px] md:grid-cols-3">
                 <article
                   v-for="(destination, index) in heroStripDestinations"
                   :key="destination.name"
-                  class="flex items-start gap-4 px-10 py-7 text-white"
-                  :class="index < heroStripDestinations.length - 1 ? 'border-r border-white/[0.045]' : ''"
+                  class="liquid-destination flex items-start gap-4 px-10 py-7 text-white"
+                  :class="{ 'has-divider': index < heroStripDestinations.length - 1 }"
                 >
-                  <MapPin class="mt-0.5 h-5 w-5 shrink-0 text-white/[0.16]" />
-                  <div>
-                    <h3 class="text-[16px] font-semibold tracking-[-0.02em] text-white">{{ destination.name }}</h3>
-                    <p class="mt-1 text-[12px] text-white/[0.28]">{{ destination.subtitle }}</p>
+                  <span class="liquid-destination-glow" />
+                  <span class="liquid-destination-ripple" />
+                  <MapPin class="liquid-destination-icon mt-0.5 h-5 w-5 shrink-0" />
+                  <div class="relative z-10">
+                    <h3 class="liquid-destination-title text-[16px] font-semibold tracking-[-0.02em] text-white">{{ destination.name }}</h3>
+                    <p class="liquid-destination-copy mt-1 text-[12px]">{{ destination.subtitle }}</p>
                   </div>
                 </article>
               </div>
@@ -1163,7 +1165,7 @@ onUnmounted(() => {
       </section>
     </main>
 
-    <Footer variant="light" />
+    <Footer variant="white" />
   </div>
 </template>
 
@@ -1174,8 +1176,8 @@ onUnmounted(() => {
 }
 
 .hero-reveal {
-  opacity: 0;
-  transform: translateY(22px);
+  opacity: 0.01;
+  transform: translateY(12px);
   transition:
     opacity 0.8s ease,
     transform 0.8s ease;
@@ -1184,6 +1186,371 @@ onUnmounted(() => {
 .hero-reveal.is-visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+.destination-glass-strip {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 2px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.015) 48%, rgba(3, 14, 16, 0.2)),
+    rgba(46, 55, 52, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -22px 42px rgba(0, 0, 0, 0.16),
+    0 16px 48px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(13px) saturate(1.18);
+  -webkit-backdrop-filter: blur(13px) saturate(1.18);
+}
+
+.destination-glass-strip::before,
+.destination-glass-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.destination-glass-strip::before {
+  z-index: 1;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    inset 18px 0 32px rgba(255, 255, 255, 0.025),
+    inset -18px 0 34px rgba(255, 255, 255, 0.018);
+}
+
+.destination-glass-strip::after {
+  z-index: 0;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.24), transparent 25%),
+    radial-gradient(circle at 74% 18%, rgba(115, 176, 176, 0.18), transparent 32%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045), transparent 21%, rgba(255, 255, 255, 0.025) 78%, transparent);
+  mix-blend-mode: screen;
+  opacity: 0.88;
+}
+
+.destination-glass-aura,
+.destination-glass-sheen,
+.destination-glass-caustic {
+  position: absolute;
+  pointer-events: none;
+}
+
+.destination-glass-aura {
+  inset: -48% -10%;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 22% 46%, rgba(255, 255, 255, 0.17), transparent 20%),
+    radial-gradient(circle at 62% 36%, rgba(65, 122, 121, 0.18), transparent 27%),
+    radial-gradient(circle at 84% 62%, rgba(255, 255, 255, 0.12), transparent 24%);
+  filter: blur(24px);
+  animation: destinationAuraDrift 9s ease-in-out infinite alternate;
+}
+
+.destination-glass-sheen {
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(115deg, transparent 6%, rgba(255, 255, 255, 0.12) 19%, rgba(255, 255, 255, 0.026) 32%, transparent 45%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.012) 42%, rgba(0, 0, 0, 0.07));
+  opacity: 0.48;
+  transform: translateX(-18%);
+  animation: destinationSheenSweep 7.5s ease-in-out infinite;
+}
+
+.destination-glass-caustic {
+  z-index: 2;
+  width: 260px;
+  height: 120px;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 48%, transparent 70%);
+  filter: blur(14px);
+  mix-blend-mode: screen;
+}
+
+.destination-glass-caustic-a {
+  left: 8%;
+  top: -48px;
+  animation: destinationCausticA 8s ease-in-out infinite alternate;
+}
+
+.destination-glass-caustic-b {
+  right: 8%;
+  bottom: -60px;
+  animation: destinationCausticB 8.5s ease-in-out infinite alternate;
+}
+
+.liquid-destination {
+  position: relative;
+  min-height: 86px;
+  overflow: hidden;
+  transform: translateZ(0);
+  transition:
+    transform 0.48s cubic-bezier(0.2, 0.9, 0.22, 1),
+    background-color 0.48s ease,
+    box-shadow 0.48s ease;
+}
+
+.liquid-destination.has-divider {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.liquid-destination::before,
+.liquid-destination::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.48s ease,
+    transform 0.58s cubic-bezier(0.2, 0.9, 0.22, 1);
+}
+
+.liquid-destination::before {
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.18), transparent 28%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012) 58%, rgba(0, 0, 0, 0.045));
+  transform: translateX(-18%);
+}
+
+.liquid-destination::after {
+  top: -64px;
+  left: -8%;
+  width: 190px;
+  height: 190px;
+  border-radius: 52% 48% 44% 56%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.28), transparent 28%),
+    radial-gradient(circle at 62% 62%, rgba(118, 195, 191, 0.16), transparent 48%);
+  filter: blur(8px);
+  mix-blend-mode: screen;
+  transform: translate3d(-10%, -4%, 0) rotate(8deg) scale(0.78);
+}
+
+.liquid-destination:nth-child(2)::after {
+  left: 10%;
+}
+
+.liquid-destination:nth-child(3)::after {
+  left: 28%;
+}
+
+.liquid-destination:hover,
+.liquid-destination:focus-within {
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.026);
+  box-shadow: inset 0 0 42px rgba(255, 255, 255, 0.035);
+  transform: translateY(-1px);
+}
+
+.liquid-destination:hover::before,
+.liquid-destination:hover::after,
+.liquid-destination:focus-within::before,
+.liquid-destination:focus-within::after {
+  opacity: 1;
+}
+
+.liquid-destination:hover::before,
+.liquid-destination:focus-within::before {
+  transform: translateX(0);
+}
+
+.liquid-destination:hover::after,
+.liquid-destination:focus-within::after {
+  transform: translate3d(10%, 10%, 0) rotate(-7deg) scale(1);
+  animation: destinationLiquidBlob 2.6s ease-in-out infinite alternate;
+}
+
+.liquid-destination:active {
+  transform: translateY(0);
+  transition-duration: 0.16s;
+}
+
+.liquid-destination-glow,
+.liquid-destination-ripple {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.liquid-destination-glow {
+  inset: -20% -10%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 66% 82%, rgba(97, 154, 151, 0.13), transparent 34%);
+  filter: blur(18px);
+  transition:
+    opacity 0.52s ease,
+    transform 0.52s ease;
+  transform: translate3d(-10px, 8px, 0);
+}
+
+.liquid-destination-ripple {
+  left: 26px;
+  top: 18px;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transform: scale(0.35);
+}
+
+.liquid-destination:hover .liquid-destination-glow,
+.liquid-destination:focus-within .liquid-destination-glow {
+  opacity: 1;
+  transform: translate3d(8px, -4px, 0);
+}
+
+.liquid-destination:hover .liquid-destination-ripple,
+.liquid-destination:focus-within .liquid-destination-ripple {
+  animation: destinationRipple 1.45s ease-out infinite;
+}
+
+.liquid-destination-icon {
+  position: relative;
+  z-index: 10;
+  color: rgba(255, 255, 255, 0.26);
+  filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  transition:
+    color 0.38s ease,
+    filter 0.38s ease,
+    transform 0.42s cubic-bezier(0.2, 0.9, 0.22, 1);
+}
+
+.liquid-destination-title,
+.liquid-destination-copy {
+  transition:
+    color 0.34s ease,
+    text-shadow 0.34s ease,
+    transform 0.42s cubic-bezier(0.2, 0.9, 0.22, 1);
+}
+
+.liquid-destination-copy {
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.liquid-destination:hover .liquid-destination-icon,
+.liquid-destination:focus-within .liquid-destination-icon {
+  color: rgba(255, 255, 255, 0.72);
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
+  transform: translateY(-1px) scale(1.08);
+}
+
+.liquid-destination:hover .liquid-destination-title,
+.liquid-destination:focus-within .liquid-destination-title {
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.25);
+  transform: translateX(2px);
+}
+
+.liquid-destination:hover .liquid-destination-copy,
+.liquid-destination:focus-within .liquid-destination-copy {
+  color: rgba(255, 255, 255, 0.58);
+  transform: translateX(2px);
+}
+
+@media (min-width: 768px) {
+  .liquid-destination.has-divider {
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destination-glass-aura,
+  .destination-glass-sheen,
+  .destination-glass-caustic,
+  .liquid-destination:hover::after,
+  .liquid-destination:focus-within::after,
+  .liquid-destination:hover .liquid-destination-ripple,
+  .liquid-destination:focus-within .liquid-destination-ripple {
+    animation: none;
+  }
+
+  .liquid-destination,
+  .liquid-destination::before,
+  .liquid-destination::after,
+  .liquid-destination-icon,
+  .liquid-destination-title,
+  .liquid-destination-copy {
+    transition-duration: 0.01ms;
+  }
+}
+
+@keyframes destinationAuraDrift {
+  0% {
+    transform: translate3d(-3%, -1%, 0) rotate(-2deg);
+  }
+
+  100% {
+    transform: translate3d(3%, 2%, 0) rotate(2deg);
+  }
+}
+
+@keyframes destinationSheenSweep {
+  0%,
+  28% {
+    transform: translateX(-26%);
+    opacity: 0.36;
+  }
+
+  54% {
+    transform: translateX(8%);
+    opacity: 0.72;
+  }
+
+  100% {
+    transform: translateX(28%);
+    opacity: 0.42;
+  }
+}
+
+@keyframes destinationCausticA {
+  0% {
+    transform: translate3d(-18px, 0, 0) rotate(0deg) scaleX(1);
+  }
+
+  100% {
+    transform: translate3d(70px, 16px, 0) rotate(8deg) scaleX(1.2);
+  }
+}
+
+@keyframes destinationCausticB {
+  0% {
+    transform: translate3d(34px, -6px, 0) rotate(-4deg) scaleX(1.15);
+  }
+
+  100% {
+    transform: translate3d(-54px, -18px, 0) rotate(7deg) scaleX(0.92);
+  }
+}
+
+@keyframes destinationLiquidBlob {
+  0% {
+    border-radius: 52% 48% 44% 56%;
+    transform: translate3d(6%, 8%, 0) rotate(-6deg) scale(0.96);
+  }
+
+  100% {
+    border-radius: 43% 57% 59% 41%;
+    transform: translate3d(15%, 14%, 0) rotate(8deg) scale(1.06);
+  }
+}
+
+@keyframes destinationRipple {
+  0% {
+    opacity: 0.42;
+    transform: scale(0.35);
+  }
+
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
 }
 
 .activity-nav-mark {

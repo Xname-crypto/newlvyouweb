@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from .auth_middleware import get_user_id_from_request
 from .discovery_repository import SpotRecord, get_spot_repository, list_available_cities
 from .models import TravelBookingIntent, TravelDiscoverySignal, TravelItineraryItem
+from .scenic_algorithms import classification_payload, optimize_route, semantic_recommendations
 from .serializers import TravelBookingIntentSerializer, TravelItineraryItemSerializer
 
 
@@ -435,6 +436,49 @@ def discovery_recommendations(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["GET"])
+def discovery_classification(request):
+    limit = int(request.query_params.get("limit") or 50)
+    city = str(request.query_params.get("city") or "").strip()
+    category = str(request.query_params.get("category") or "").strip()
+    return Response(classification_payload(limit=limit, city=city, category=category), status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def discovery_semantic_recommendations(request):
+    limit = int(request.query_params.get("limit") or 12)
+    query = str(request.query_params.get("q") or request.query_params.get("preference") or "").strip()
+    city = str(request.query_params.get("city") or "").strip()
+    category = str(request.query_params.get("category") or "").strip()
+    return Response(
+        semantic_recommendations(query=query, city=city, category=category, limit=limit),
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+def itinerary_optimize_route(request):
+    city = str(request.data.get("city") or "").strip()
+    if not city:
+        return Response({"error": "city is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    days = int(request.data.get("days") or 2)
+    days = max(1, min(days, 7))
+    spots_per_day = int(request.data.get("spots_per_day") or 4)
+    spots_per_day = max(1, min(spots_per_day, 6))
+    budget = _safe_float(request.data.get("budget"), 0) or 0
+    preference = str(request.data.get("preference") or "").strip()
+
+    payload = optimize_route(
+        city=city,
+        days=days,
+        preference=preference,
+        budget=budget,
+        spots_per_day=spots_per_day,
+    )
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])

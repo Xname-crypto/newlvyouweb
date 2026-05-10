@@ -1,24 +1,5 @@
 <template>
   <div class="kb-page-shell">
-    <div v-if="showFilterOverlay" class="kb-page-overlay" @click="filterSidebarOpen = false"></div>
-
-    <KnowledgeWorkbenchSidebar
-      :open="sidebarVisible"
-      :knowledge-base="selectedKnowledgeBase"
-      :facets="workspaceFacets"
-      :stats="workspaceStats"
-      :search-query="searchQuery"
-      :active-category="activeCategory"
-      :active-tag="activeTag"
-      :recent-items="recentlyViewedDatasets"
-      @close="filterSidebarOpen = false"
-      @open-admin="openAdminDrawer"
-      @update:search-query="searchQuery = $event"
-      @select-category="activeCategory = $event"
-      @select-tag="activeTag = $event"
-      @pick-recent="openRecentDataset"
-    />
-
     <div class="kb-page-main">
       <div v-if="workspaceLoading && !knowledgeBases.length" class="kb-blank-state">
         <h2>知识工作台加载中</h2>
@@ -32,32 +13,176 @@
       </div>
 
       <div v-else class="kb-workbench">
-        <KnowledgeWorkbenchCenter
-          :knowledge-base="selectedKnowledgeBase"
-          :dataset="selectedCard"
-          :documents="knowledgeBaseDocuments"
-          :current-index="Math.max(currentCardIndex, 0)"
-          :total-count="Math.max(filteredCards.length, 1)"
-          :stack-cards="filteredCards"
-          :transition-direction="transitionDirection"
-          :transition-tick="transitionTick"
-          @create-dataset="openCreateDataset"
-          @wheel-navigate="navigateDataset"
-        />
+        <section class="kb-admin-head">
+          <div>
+            <p class="kb-admin-head__crumb">仪表盘 / 知识库管理</p>
+            <h1>知识库管理</h1>
+            <span>管理景点数据知识卡片</span>
+          </div>
+          <div class="kb-admin-head__tools">
+            <label class="kb-admin-head__search">
+              <span>搜索资料</span>
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="搜索景点、城市、标签..."
+              />
+            </label>
+            <button class="kb-admin-head__button" type="button" @click="openImportModal">导入旧资料</button>
+          </div>
+        </section>
 
-        <KnowledgeDatasetRail
-          :knowledge-base="selectedKnowledgeBase"
-          :datasets="filteredCards"
-          :active-dataset="selectedCard"
-          :can-go-prev="currentCardIndex > 0"
-          :can-go-next="currentCardIndex >= 0 && currentCardIndex < filteredCards.length - 1"
-          :footer-mode="'document'"
-          @navigate-dataset="navigateDataset"
-          @select-dataset="selectDataset"
-          @edit-dataset="openEditDataset"
-          @delete-dataset="deleteDataset"
-          @open-testing="goToQATest"
-        />
+        <header class="kb-workbench__topbar">
+          <div class="kb-workbench__title-block">
+            <span>Knowledge Base</span>
+            <h1>{{ selectedKnowledgeBase?.name || selectedKnowledgeBase?.metadata?.name || '知识库管理' }}</h1>
+          </div>
+
+          <div class="kb-workbench__controls">
+            <label class="kb-workbench__select-wrap">
+              <span>知识库</span>
+              <select class="kb-page-select" :value="selectedKnowledgeBase?.id || ''" @change="handleKnowledgeBaseChange">
+                <option v-for="base in knowledgeBases" :key="base.id" :value="base.id">
+                  {{ base.name || base.metadata?.name || `KB ${base.id}` }}
+                </option>
+              </select>
+            </label>
+
+            <label class="kb-workbench__select-wrap">
+              <span>资料集</span>
+              <select class="kb-page-select" :value="selectedDataset?.id || ''" :disabled="!filteredDatasets.length" @change="handleDatasetChange">
+                <option value="">全部资料</option>
+                <option v-for="item in filteredDatasets" :key="item.id" :value="item.id">
+                  {{ item.name || item.metadata?.name || `Dataset ${item.id}` }}
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <div class="kb-workbench__actions">
+            <button class="kb-page-action" type="button" @click="openCreateKnowledgeBase">新建知识库</button>
+            <button class="kb-page-action" type="button" @click="openCreateDataset">新建资料集</button>
+            <button class="kb-page-action" type="button" :disabled="!selectedDataset" @click="openAppendModal">添加资料</button>
+            <button class="kb-page-qa-btn" type="button" :disabled="!selectedDataset" @click="openImportModal">导入旧资料</button>
+            <button class="kb-page-action" type="button" @click="goToQATest">问答测试</button>
+          </div>
+        </header>
+
+        <section class="kb-workbench__stats">
+          <article>
+            <strong>{{ workspaceStats.dataset_count || datasets.length }}</strong>
+            <span>资料集</span>
+          </article>
+          <article>
+            <strong>{{ workspaceStats.document_count || knowledgeBaseDocuments.length }}</strong>
+            <span>资料</span>
+          </article>
+          <article>
+            <strong>{{ filteredCards.length }}</strong>
+            <span>当前筛选</span>
+          </article>
+          <article>
+            <strong>{{ workspaceStats.pending_count || 0 }}</strong>
+            <span>待处理</span>
+          </article>
+        </section>
+
+        <section class="kb-filter-panel">
+          <div class="kb-filter-panel__search">
+            <label class="kb-workbench__select-wrap">
+              <span>æœç´¢</span>
+              <input
+                v-model="searchQuery"
+                class="kb-modal__input"
+                type="text"
+                placeholder="æœç´¢èµ„æ–™æ ‡é¢˜ã€åŸŽå¸‚ã€�æ ‡ç­¾"
+              />
+            </label>
+            <button v-if="isCompactWorkbench" class="kb-page-action" type="button" @click="filterSidebarOpen = true">æ›´å¤šç­›é€‰</button>
+          </div>
+
+          <div class="kb-filter-row">
+            <span class="kb-filter-row__label">åˆ†ç±»</span>
+            <div class="kb-filter-row__chips">
+              <button class="kb-filter-chip" :class="{ 'is-active': !activeCategory }" type="button" @click="activeCategory = ''">å…¨éƒ¨</button>
+              <button
+                v-for="item in workspaceFacets.categories.slice(0, 8)"
+                :key="item.value"
+                class="kb-filter-chip"
+                :class="{ 'is-active': activeCategory === item.value }"
+                type="button"
+                @click="activeCategory = item.value"
+              >
+                {{ item.value }}
+                <span>{{ item.count }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="kb-filter-row">
+            <span class="kb-filter-row__label">æ ‡ç­¾</span>
+            <div class="kb-filter-row__chips">
+              <button class="kb-filter-chip kb-filter-chip--tag" :class="{ 'is-active': !activeTag }" type="button" @click="activeTag = ''">å…¨éƒ¨æ ‡ç­¾</button>
+              <button
+                v-for="item in workspaceFacets.tags.slice(0, 10)"
+                :key="item.value"
+                class="kb-filter-chip kb-filter-chip--tag"
+                :class="{ 'is-active': activeTag === item.value }"
+                type="button"
+                @click="activeTag = item.value"
+              >
+                #{{ item.value }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="recentlyViewedDatasets.length" class="kb-filter-row">
+            <span class="kb-filter-row__label">æœ€è¿‘è®¿é—®</span>
+            <div class="kb-filter-row__chips">
+              <button
+                v-for="item in recentlyViewedDatasets.slice(0, 5)"
+                :key="`${item.knowledgeBaseId}-${item.datasetId}`"
+                class="kb-filter-chip kb-filter-chip--recent"
+                type="button"
+                @click="openRecentDataset(item)"
+              >
+                {{ item.name }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="kb-workbench__body">
+          <KnowledgeWorkbenchCenter
+            :knowledge-base="selectedKnowledgeBase"
+            :dataset="selectedCard"
+            :documents="knowledgeBaseDocuments"
+            :current-index="Math.max(currentCardIndex, 0)"
+            :total-count="Math.max(filteredCards.length, 1)"
+            :stack-cards="filteredCards"
+            :transition-direction="transitionDirection"
+            :transition-tick="transitionTick"
+            @create-dataset="openCreateDataset"
+            @wheel-navigate="navigateDataset"
+          />
+
+          <KnowledgeDatasetRail
+            :knowledge-base="selectedKnowledgeBase"
+            :datasets="filteredCards"
+            :active-dataset="selectedCard"
+            :can-go-prev="currentCardIndex > 0"
+            :can-go-next="currentCardIndex >= 0 && currentCardIndex < filteredCards.length - 1"
+            :can-manage-documents="Boolean(selectedDataset)"
+            :footer-mode="'document'"
+            @navigate-dataset="navigateDataset"
+            @select-dataset="selectDataset"
+            @edit-dataset="openEditDataset"
+            @delete-dataset="deleteDataset"
+            @append-document="openAppendModal"
+            @import-legacy="openImportModal"
+            @open-testing="goToQATest"
+          />
+        </div>
       </div>
     </div>
 
@@ -341,7 +466,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
-import KnowledgeWorkbenchSidebar from '@/components/admin/knowledge/KnowledgeWorkbenchSidebar.vue'
+import { apiUrl } from '@/utils/apiBase'
 import KnowledgeWorkbenchCenter from '@/components/admin/knowledge/KnowledgeWorkbenchCenter.vue'
 import KnowledgeDatasetRail from '@/components/admin/knowledge/KnowledgeDatasetRail.vue'
 import type {
@@ -364,7 +489,7 @@ interface RecentDatasetItem {
   category: string
 }
 
-const API_URL = '/api/knowledge/'
+const API_URL = apiUrl('/api/knowledge/')
 const RECENT_STORAGE_KEY = 'admin-knowledge-recent-datasets'
 const datasetCategoryOptions = ['景点', '酒店', '餐饮', '交通', '攻略', '综合', '待分类']
 const appendTabs: Array<{ id: AppendTab; label: string }> = [
@@ -586,21 +711,7 @@ const filteredCards = computed(() => knowledgeBaseDocuments.value.filter(item =>
   return categoryMatch && tagMatch && searchMatch
 }))
 
-const sidebarVisible = computed(() => !isCompactWorkbench.value || filterSidebarOpen.value)
-const showFilterOverlay = computed(() => isCompactWorkbench.value && filterSidebarOpen.value)
-
 const currentCardIndex = computed(() => filteredCards.value.findIndex(item => item.id === selectedCard.value?.id))
-const stackCards = computed(() => {
-  if (!filteredCards.value.length) return []
-  const index = Math.max(currentCardIndex.value, 0)
-  return filteredCards.value
-    .slice(index, index + 3)
-    .map((item, stackIndex) => ({
-      key: `stack-${stackIndex}-${item.id}`,
-      id: item.id,
-      title: item.metadata?.title || item.name || item.metadata?.name || `Card ${item.id}`,
-    }))
-})
 
 const smartRecommendationLabels = computed(() => {
   const matched = legacyMatchedBy.value
@@ -641,12 +752,6 @@ watch(filteredCards, items => {
     selectedCard.value = items[0]
   }
 }, { immediate: true })
-
-const openAdminDrawer = () => {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('admin-layout:toggle-sidebar'))
-  }
-}
 
 const syncWorkbenchMode = () => {
   if (typeof window === 'undefined') return
@@ -829,7 +934,7 @@ const fetchDocuments = async (knowledgeBaseId: number, datasetId: number) => {
 
 const fetchEmbeddingProfiles = async () => {
   try {
-    const response = await fetch('/api/embedding-profiles/')
+    const response = await fetch(apiUrl('/api/embedding-profiles/'))
     const data = await parseJsonSafely(response)
     if (response.ok) {
       embeddingProfiles.value = Array.isArray(data) ? data : data?.results || []
@@ -846,6 +951,14 @@ const handleKnowledgeBaseChange = async (event: Event) => {
   searchQuery.value = ''
   documents.value = []
   await loadWorkspace(nextId)
+}
+
+const handleDatasetChange = async (event: Event) => {
+  if (!selectedKnowledgeBase.value) return
+  const nextId = Number((event.target as HTMLSelectElement).value)
+  selectedCard.value = null
+  documents.value = []
+  await loadWorkspace(selectedKnowledgeBase.value.id, Number.isFinite(nextId) && nextId > 0 ? nextId : null)
 }
 
 const selectDataset = async (item: KnowledgeBaseItem, direction?: 'up' | 'down') => {
@@ -1248,11 +1361,15 @@ onUnmounted(() => {
 
 <style scoped>
 .kb-page-shell {
-  display: flex;
-  min-height: 100vh;
-  height: 100vh;
-  background: #f2ede4;
-  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: auto;
+  height: auto;
+  background: #ffffff;
+  overflow: visible;
 }
 .kb-page-overlay {
   position: fixed;
@@ -1262,11 +1379,11 @@ onUnmounted(() => {
 }
 .kb-page-main {
   min-width: 0;
-  flex: 1;
-  min-height: 100vh;
-  height: 100vh;
+  width: 100%;
+  min-height: auto;
+  height: auto;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .kb-page-select,
 .kb-modal__input,
@@ -1307,12 +1424,225 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 .kb-workbench {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 214px;
-  min-height: 100vh;
-  height: 100vh;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
+  background: #ffffff;
+}
+.kb-admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+.kb-admin-head__crumb {
+  margin: 0 0 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+.kb-admin-head h1 {
+  margin: 0;
+  color: #06152d;
+  font-size: 26px;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+.kb-admin-head span {
+  display: block;
+  margin-top: 4px;
+  color: #52647d;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.kb-admin-head__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.kb-admin-head__search {
+  position: relative;
+  width: min(360px, 34vw);
+}
+.kb-admin-head__search span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
-  background: #f5efe5;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.kb-admin-head__search input {
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+.kb-admin-head__search input:focus {
+  border-color: #bfdbfe;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08);
+}
+.kb-admin-head__button {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #0f1b33;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.kb-workbench__topbar {
+  display: none;
+  grid-template-columns: minmax(180px, 1fr) minmax(360px, 0.9fr) auto;
+  gap: 18px;
+  align-items: end;
+  padding: 22px 28px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+}
+.kb-workbench__title-block span,
+.kb-workbench__select-wrap span {
+  display: block;
+  margin-bottom: 7px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kb-workbench__title-block h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+.kb-workbench__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.kb-workbench__select-wrap {
+  min-width: 0;
+}
+.kb-workbench__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.kb-workbench__stats {
+  display: none;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 28px;
+  background: #e2e8f0;
+}
+.kb-workbench__stats article {
+  min-width: 0;
+  padding: 14px 18px;
+  background: #ffffff;
+}
+.kb-workbench__stats strong {
+  display: block;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+}
+.kb-workbench__stats span {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+.kb-filter-panel {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 28px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+}
+.kb-filter-panel__search {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+.kb-filter-panel__search .kb-workbench__select-wrap {
+  flex: 1;
+}
+.kb-filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.kb-filter-row__label {
+  width: 56px;
+  padding-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.kb-filter-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kb-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+.kb-filter-chip span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+.kb-filter-chip.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.kb-filter-chip--tag,
+.kb-filter-chip--recent {
+  border-radius: 10px;
+}
+.kb-workbench__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  min-height: 640px;
+  height: calc(100dvh - 154px);
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
 }
 .kb-blank-state {
   padding: 56px 32px;
@@ -1634,6 +1964,7 @@ onUnmounted(() => {
   }
   .kb-page-main {
     padding: 0;
+    width: 100%;
     min-height: auto;
     height: auto;
     overflow: visible;
@@ -1642,6 +1973,22 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
     min-height: auto;
     height: auto;
+  }
+  .kb-workbench__topbar,
+  .kb-workbench__body {
+    grid-template-columns: 1fr;
+  }
+  .kb-workbench__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .kb-filter-panel__search,
+  .kb-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .kb-filter-row__label {
+    width: auto;
+    padding-top: 0;
   }
   .kb-filter-grid {
     grid-template-columns: 1fr;
@@ -1658,6 +2005,31 @@ onUnmounted(() => {
 @media (max-width: 720px) {
   .kb-modal {
     margin-top: 4vh;
+  }
+  .kb-workbench__topbar {
+    padding: 18px 16px 14px;
+  }
+  .kb-filter-panel {
+    padding: 14px 16px;
+  }
+  .kb-workbench__controls,
+  .kb-workbench__stats {
+    grid-template-columns: 1fr;
+  }
+  .kb-filter-panel__search,
+  .kb-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .kb-filter-row__label {
+    width: auto;
+    padding-top: 0;
+  }
+  .kb-workbench__actions {
+    justify-content: stretch;
+  }
+  .kb-workbench__actions button {
+    flex: 1 1 140px;
   }
   .kb-modal__header,
   .kb-modal__body,

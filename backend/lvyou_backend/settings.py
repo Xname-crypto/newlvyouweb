@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import environ
 from pathlib import Path
 import os
+import importlib.util
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,16 +26,28 @@ env = environ.Env(
     DEBUG=(bool, False)
 )
 # Load environment variables from common locations.
-# Priority (low -> high): repo .env, backend .env, repo .env.local, backend .env.local
+# Priority is first-match-wins so process-specific environment variables and
+# local backend overrides beat the repo-level defaults.
 ENV_FILES = [
-    BASE_DIR.parent / ".env",
-    BASE_DIR / ".env",
-    BASE_DIR.parent / ".env.local",
     BASE_DIR / ".env.local",
+    BASE_DIR.parent / ".env.local",
+    BASE_DIR / ".env",
+    BASE_DIR.parent / ".env",
 ]
 for env_file in ENV_FILES:
     if env_file.exists():
-        environ.Env.read_env(env_file, overwrite=True)
+        environ.Env.read_env(env_file, overwrite=False)
+
+
+HAS_WHITENOISE = importlib.util.find_spec("whitenoise") is not None
+
+
+def env_csv(name, default=None):
+    raw_value = env(name, default="")
+    if raw_value is None:
+        raw_value = ""
+    values = [item.strip() for item in str(raw_value).split(",") if item.strip()]
+    return values or list(default or [])
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -43,9 +56,12 @@ for env_file in ENV_FILES:
 SECRET_KEY = env('SECRET_KEY', default="django-insecure-d^j#m5vwq!-8f=u5-r=-ur11*_6z^r8=7mfle-3a8wngu_hk(4")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env('DEBUG', default=True)
+DEBUG = env.bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = env_csv(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", ".zeabur.app"],
+)
 
 
 # Application definition
@@ -64,8 +80,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -73,15 +89,22 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+if HAS_WHITENOISE:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-]
+CORS_ALLOWED_ORIGINS = env_csv(
+    "CORS_ALLOWED_ORIGINS",
+    default=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+)
 
 CORS_ALLOW_ALL_ORIGINS = False
+CSRF_TRUSTED_ORIGINS = env_csv("CSRF_TRUSTED_ORIGINS", default=CORS_ALLOWED_ORIGINS)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 ROOT_URLCONF = "lvyou_backend.urls"
@@ -111,6 +134,14 @@ DATABASES = {
     "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
     # "mysql": env.db("MYSQL_DATABASE_URL", default="mysql://user:password@localhost:3306/db_name"),
 }
+
+# Normalize relative SQLite paths so the backend always uses backend/db.sqlite3
+# regardless of the current working directory used to start Django.
+default_db = DATABASES.get("default", {})
+if default_db.get("ENGINE") == "django.db.backends.sqlite3":
+    db_name = str(default_db.get("NAME") or "").strip()
+    if db_name and not Path(db_name).is_absolute():
+        default_db["NAME"] = str((BASE_DIR / db_name).resolve())
 
 
 # Password validation
@@ -147,7 +178,23 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if HAS_WHITENOISE
+            else "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+        ),
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

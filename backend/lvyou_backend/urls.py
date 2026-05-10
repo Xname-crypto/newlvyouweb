@@ -16,7 +16,9 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.conf import settings
+from django.urls import path, include, re_path
+from django.views.static import serve
 from rest_framework.routers import DefaultRouter
 from data_engine.views import (
     EmbeddingProfileViewSet,
@@ -29,12 +31,22 @@ from data_engine.views import (
 )
 from data_engine.discovery_views import (
     booking_intents,
+    discovery_classification,
     discovery_recommendations,
+    discovery_semantic_recommendations,
     discovery_spot_detail,
     discovery_spots,
     itinerary_add_item,
     itinerary_delete_item,
     itinerary_list,
+    itinerary_optimize_route,
+)
+from data_engine.commerce_views import (
+    CheckoutOrderViewSet,
+    PaymentEventViewSet,
+    PaymentOrderViewSet,
+    ProductViewSet,
+    zpay_notify,
 )
 from datasource_manager.views import DataSourceViewSet
 
@@ -43,6 +55,10 @@ router.register(r'knowledge', KnowledgeBaseViewSet, basename='knowledge')
 router.register(r'datasources', DataSourceViewSet, basename='datasources')
 router.register(r'embedding-profiles', EmbeddingProfileViewSet, basename='embedding-profiles')
 router.register(r'admin-qa-sessions', AdminQATestSessionViewSet, basename='admin-qa-sessions')
+router.register(r'products', ProductViewSet, basename='products')
+router.register(r'checkout/orders', CheckoutOrderViewSet, basename='checkout-orders')
+router.register(r'orders', PaymentOrderViewSet, basename='orders')
+router.register(r'payment-events', PaymentEventViewSet, basename='payment-events')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -56,8 +72,16 @@ urlpatterns = [
     path('api/discovery/spots/', discovery_spots, name='discovery_spots'),
     path('api/discovery/spots/<str:spot_key>/', discovery_spot_detail, name='discovery_spot_detail'),
     path('api/discovery/recommendations/', discovery_recommendations, name='discovery_recommendations'),
+    path('api/discovery/classification/', discovery_classification, name='discovery_classification'),
+    path('api/discovery/semantic-recommendations/', discovery_semantic_recommendations, name='discovery_semantic_recommendations'),
     path('api/itinerary/', itinerary_list, name='itinerary_list'),
+    path('api/itinerary/optimize/', itinerary_optimize_route, name='itinerary_optimize_route'),
     path('api/itinerary/items/', itinerary_add_item, name='itinerary_add_item'),
     path('api/itinerary/items/<int:item_id>/', itinerary_delete_item, name='itinerary_delete_item'),
     path('api/booking-intents/', booking_intents, name='booking_intents'),
+    path('api/payments/zpay/notify/', zpay_notify, name='zpay_notify'),
+]
+
+urlpatterns += [
+    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
 ]

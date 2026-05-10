@@ -409,6 +409,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue'
 import { supabase } from '@/utils/supabase'
+import { apiUrl } from '@/utils/apiBase'
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -575,7 +576,7 @@ const saveConfig = async () => {
   saving.value = true;
 
   try {
-    const resp = await fetch('/api/api-providers/update-config/', {
+    const resp = await fetch(apiUrl('/api/api-providers/update-config/'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -699,7 +700,7 @@ const refresh = async () => {
   
   // Fetch Providers from backend endpoint to avoid client-side RLS 403 noise.
   try {
-    const resp = await fetch('/api/api-providers/public/?all=1&capability=all')
+    const resp = await fetch(apiUrl('/api/api-providers/public/?all=1&capability=all'))
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const payload = await resp.json()
     list.value = ((payload?.data || []) as Provider[])

@@ -1,11 +1,6 @@
 <template>
   <div class="flex h-screen bg-white font-sans text-slate-900 relative overflow-hidden">
     <ChatDrawer :isOpen="isChatOpen" :sidebarWidth="chatDrawerSidebarWidth" @close="isChatOpen = false" />
-    <div
-      v-if="isKnowledgePage && adminSidebarOpen"
-      class="fixed inset-0 z-30 bg-slate-900/20"
-      @click="adminSidebarOpen = false"
-    ></div>
     <!-- 左侧栏：白色背景，极简文字 -->
     <aside
       class="admin-sidebar flex flex-col"
@@ -32,7 +27,6 @@
           </span>
         </div>
         <button
-          v-if="!isKnowledgePage"
           class="admin-sidebar__toggle inline-flex shrink-0 items-center justify-center transition-colors"
           type="button"
           :title="isSidebarCompactMode ? '展开菜单' : '收起菜单'"
@@ -127,10 +121,10 @@
 
     <!-- 中间主内容区 -->
     <div class="flex-1 flex flex-col min-w-0">
-      <header v-if="!isKnowledgePage" class="h-16 border-b border-slate-100 flex items-center justify-between px-8 bg-white">
+      <header class="h-16 border-b border-slate-100 flex items-center justify-between px-8 bg-white">
         <div class="flex items-center gap-4 text-sm">
           <button
-            v-if="isKnowledgePage"
+            v-if="false"
             class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50"
             type="button"
             @click="adminSidebarOpen = true"
@@ -141,9 +135,13 @@
             <LayoutGrid class="w-4 h-4" />
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-slate-400">仪表盘</span>
+            <span class="text-slate-400">管理</span>
             <span class="text-slate-300">/</span>
             <span class="text-slate-900 font-medium">{{ pageTitle }}</span>
+            <template v-if="adminSubPageTitle">
+              <span class="text-slate-300">/</span>
+              <span class="text-slate-900 font-medium">{{ adminSubPageTitle }}</span>
+            </template>
           </div>
         </div>
         
@@ -191,7 +189,10 @@
         </div>
       </header>
 
-      <main class="flex-1 overflow-auto bg-white" :class="(isQATestPage || isKnowledgePage) ? 'p-0' : 'p-8'">
+      <main
+        class="flex-1 overflow-auto bg-white"
+        :class="isQATestPage ? 'p-0' : (isKnowledgePage ? 'px-8 pt-4 pb-6' : 'p-8')"
+      >
         <router-view />
       </main>
     </div>
@@ -294,7 +295,9 @@ import {
   FileText,
   Database,
   CheckCircle,
-  Bot
+  Bot,
+  Package,
+  ReceiptText
 } from 'lucide-vue-next'
 
 import { usePresence } from '@/composables/usePresence'
@@ -305,33 +308,20 @@ const router = useRouter()
 const route = useRoute()
 const isQATestPage = computed(() => route.name === 'admin-qa-test')
 const isKnowledgePage = computed(() => route.name === 'admin-knowledge')
-const adminSidebarOpen = ref(false)
+const adminSubPageTitle = ref('')
+const adminSidebarOpen = ref(true)
 const isSidebarCompact = ref(false)
-adminSidebarOpen.value = !isKnowledgePage.value
 const handleAdminDrawerToggle = () => {
-  if (isKnowledgePage.value) {
-    adminSidebarOpen.value = !adminSidebarOpen.value
-  }
+  adminSidebarOpen.value = !adminSidebarOpen.value
 }
 
 const hasUnreadMessages = ref(false)
 const sidebarAnimationKey = ref(0)
-const isSidebarCompactMode = computed(() => !isKnowledgePage.value && isSidebarCompact.value)
+const isSidebarCompactMode = computed(() => isSidebarCompact.value)
 const chatDrawerSidebarWidth = computed(() => {
-  if (isKnowledgePage.value) {
-    return adminSidebarOpen.value ? 256 : 0
-  }
-
   return isSidebarCompactMode.value ? 88 : 256
 })
 const sidebarClassName = computed(() => {
-  if (isKnowledgePage.value) {
-    return [
-      'fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-200 ease-out shadow-xl',
-      adminSidebarOpen.value ? 'translate-x-0' : '-translate-x-full'
-    ]
-  }
-
   return [
     isSidebarCompactMode.value ? 'admin-sidebar--compact' : '',
     'transition-[width] duration-300 ease-out',
@@ -362,8 +352,10 @@ const managementSidebarItems: SidebarItem[] = [
   { key: 'knowledge', label: '知识库管理', to: '/admin/knowledge', icon: Database, staggerIndex: 8 },
   { key: 'content-review', label: '内容审核', to: '/admin/content-review', icon: CheckCircle, staggerIndex: 9 },
   { key: 'datasources', label: '数据源管理', to: '/admin/datasources', icon: Database, staggerIndex: 10 },
-  { key: 'api-provider', label: 'API 管理', to: '/admin/api-provider', icon: Settings2, staggerIndex: 11 },
-  { key: 'api-logs', label: 'API 日志', to: '/admin/api-logs', icon: FileText, staggerIndex: 12 }
+  { key: 'products', label: '商品管理', to: '/admin/products', icon: Package, staggerIndex: 11 },
+  { key: 'orders', label: '订单管理', to: '/admin/orders', icon: ReceiptText, staggerIndex: 12 },
+  { key: 'api-provider', label: 'API 管理', to: '/admin/api-provider', icon: Settings2, staggerIndex: 13 },
+  { key: 'api-logs', label: 'API 日志', to: '/admin/api-logs', icon: FileText, staggerIndex: 14 }
 ]
 
 const replaySidebarAnimation = () => {
@@ -410,8 +402,12 @@ const openAdminChat = () => {
 // Close chat when route changes
 watch(() => route.path, () => {
   isChatOpen.value = false
-  adminSidebarOpen.value = !isKnowledgePage.value
+  adminSubPageTitle.value = ''
 })
+
+const handleAdminSubPageTitle = (event: Event) => {
+  adminSubPageTitle.value = String((event as CustomEvent<string>).detail || '')
+}
 
 const { onlineUsers, initPresence, cleanupPresence } = usePresence()
 
@@ -445,6 +441,7 @@ onMounted(() => {
   initPresence()
   checkUnreadMessages()
   window.addEventListener('admin-layout:toggle-sidebar', handleAdminDrawerToggle as EventListener)
+  window.addEventListener('admin-layout:set-subpage-title', handleAdminSubPageTitle as EventListener)
   // Set up an interval to check for messages periodically (every 30s)
   interval = setInterval(checkUnreadMessages, 30000)
 })
@@ -453,6 +450,7 @@ onUnmounted(() => {
   cleanupPresence()
   clearInterval(interval)
   window.removeEventListener('admin-layout:toggle-sidebar', handleAdminDrawerToggle as EventListener)
+  window.removeEventListener('admin-layout:set-subpage-title', handleAdminSubPageTitle as EventListener)
 })
 
 const currentUser = ref<any>(null)
@@ -563,6 +561,8 @@ const mapping: Record<string, string> = {
   'admin-content-review': '内容审核',
   'admin-qa-test': '测试问答',
   'admin-datasources': '数据源管理',
+  'admin-products': '商品管理',
+  'admin-orders': '订单管理',
   'admin-dashboard': '概览',
   'admin': '概览'
 }
@@ -595,8 +595,8 @@ const logout = async () => {
 <style scoped>
 .admin-sidebar-section-title,
 .admin-sidebar-link {
-  animation: admin-sidebar-stagger-in 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: calc(var(--stagger-index, 0) * 56ms);
+  animation: admin-sidebar-stagger-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--stagger-index, 0) * 16ms);
 }
 
 .admin-sidebar {

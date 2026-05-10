@@ -275,6 +275,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { AdminQATestSession } from '@/services/adminQATestService'
 import { adminQATestService } from '@/services/adminQATestService'
+import { apiUrl } from '@/utils/apiBase'
 
 interface KnowledgeBase {
   id: number
@@ -406,7 +407,7 @@ const syncSelectedKnowledgeBase = () => {
 }
 
 const fetchKnowledgeBases = async () => {
-  const response = await fetch('/api/knowledge/?source=local&page_size=500')
+  const response = await fetch(apiUrl('/api/knowledge/?source=local&page_size=500'))
   if (!response.ok) throw new Error('获取知识库失败')
   const data = await response.json()
   const items = Array.isArray(data) ? data : data.results || []
@@ -415,7 +416,7 @@ const fetchKnowledgeBases = async () => {
 }
 
 const fetchProviders = async () => {
-  const response = await fetch('/api/api-providers/public/?capability=chat&all=1')
+  const response = await fetch(apiUrl('/api/api-providers/public/?capability=chat&all=1'))
   if (!response.ok) throw new Error('获取模型配置失败')
   const data = await response.json()
   providerOptions.value = (data.data || []).map((item: any) => ({

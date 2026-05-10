@@ -30,6 +30,7 @@ backend/venv/
 *.db
 backend/chroma_db_knowledge/
 backend/hf_cache/
+backend/staticfiles/
 
 # Local agent/tool caches
 .codex-cache/

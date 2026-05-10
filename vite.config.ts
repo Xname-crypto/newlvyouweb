@@ -1,8 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import fs from 'fs'
 import path from 'path'
 import Inspector from 'unplugin-vue-dev-locator/vite'
-import traeBadgePlugin from 'vite-plugin-trae-solo-badge'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -42,16 +42,49 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       vue(),
+      {
+        name: 'serve-django-media',
+        configureServer(server) {
+          const mediaRoot = path.resolve(__dirname, 'backend/media')
+
+          server.middlewares.use('/media', (req, res, next) => {
+            const rawPath = req.url?.split('?')[0] ?? ''
+            const mediaPath = path.resolve(mediaRoot, decodeURIComponent(rawPath.replace(/^\/+/, '')))
+
+            if (!mediaPath.startsWith(mediaRoot + path.sep)) {
+              res.statusCode = 403
+              res.end('Forbidden')
+              return
+            }
+
+            fs.stat(mediaPath, (statError, stat) => {
+              if (statError || !stat.isFile()) {
+                next()
+                return
+              }
+
+              const extension = path.extname(mediaPath).toLowerCase()
+              const contentType =
+                extension === '.png' ? 'image/png'
+                : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg'
+                : extension === '.webp' ? 'image/webp'
+                : extension === '.avif' ? 'image/avif'
+                : 'application/octet-stream'
+
+              res.setHeader('Content-Type', contentType)
+              res.setHeader('Content-Length', String(stat.size))
+
+              if (req.method === 'HEAD') {
+                res.end()
+                return
+              }
+
+              fs.createReadStream(mediaPath).pipe(res)
+            })
+          })
+        },
+      },
       // Inspector(), // Temporarily disabled
-      traeBadgePlugin({
-        variant: 'dark',
-        position: 'bottom-right',
-        prodOnly: true,
-        clickable: true,
-        clickUrl: 'https://www.trae.ai/solo?showJoin=1',
-        autoTheme: true,
-        autoThemeTarget: '#app',
-      }),
     ],
     resolve: {
       alias: {

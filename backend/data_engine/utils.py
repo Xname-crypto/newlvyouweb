@@ -11,7 +11,7 @@ from django.conf import settings
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Configuration (Use Django settings or environment variables)
-ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "06d9bc9bf85e41a78d3bc36ce9e46b4e.mVj71EDA6f6q53C4")
+ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 

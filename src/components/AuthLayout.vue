@@ -4,9 +4,10 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
-defineProps<{
+const props = defineProps<{
   videoSrc?: string;
   showBack?: boolean;
+  contentOffsetClass?: string;
 }>();
 
 defineEmits<{
@@ -19,15 +20,19 @@ const goBack = () => {
 </script>
 
 <template>
-  <div class="min-h-screen w-full bg-[#f0f2f5] flex items-center justify-center p-4">
+  <div class="min-h-screen w-full bg-[#f0f2f5] flex flex-col items-center justify-center gap-3 p-4">
+    <div v-if="$slots.notice" class="pointer-events-none fixed inset-x-0 top-6 z-[9999] flex justify-center px-4">
+      <slot name="notice"></slot>
+    </div>
+
     <!-- Card Container -->
     <div class="w-full max-w-4xl bg-white rounded-[2rem] shadow-xl overflow-hidden flex flex-col md:flex-row h-auto md:h-[600px]">
       
       <!-- Left Side: Video/Image -->
-      <div class="hidden md:flex md:w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center">
+      <div class="hidden md:flex md:w-1/2 bg-[#f8f7f5] relative overflow-hidden items-center justify-center">
         <!-- Back Button (Top Left of Video Section) -->
         <button 
-          v-if="showBack"
+          v-if="props.showBack"
           @click="$emit('back')"
           class="absolute top-6 left-6 z-20 p-2 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 backdrop-blur-sm rounded-full transition-all group"
           title="返回上一步"
@@ -36,14 +41,15 @@ const goBack = () => {
         </button>
 
         <video 
-          v-if="videoSrc"
-          class="absolute inset-0 w-full h-full object-cover"
+          v-if="props.videoSrc"
+          class="auth-layout-video absolute inset-0 h-full w-full bg-[#f8f7f5] object-cover"
           autoplay 
           muted 
           loop 
+          preload="auto"
           playsinline
         >
-          <source :src="videoSrc" type="video/mp4">
+          <source :src="props.videoSrc" type="video/mp4">
         </video>
       </div>
 
@@ -57,7 +63,7 @@ const goBack = () => {
           <X class="w-6 h-6" />
         </button>
 
-        <div class="max-w-2xl mx-auto w-full">
+        <div class="max-w-2xl mx-auto w-full" :class="props.contentOffsetClass">
           <div class="mb-8 text-center md:text-left">
             <div class="mb-2 text-2xl font-bold text-gray-800">
               <slot name="title">Welcome</slot>
@@ -76,5 +82,17 @@ const goBack = () => {
 </template>
 
 <style scoped>
-/* Custom Scrollbar for form if needed */
+.auth-layout-video {
+  animation: auth-video-in 180ms ease-out both;
+}
+
+@keyframes auth-video-in {
+  from {
+    opacity: 0.01;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
 </style>

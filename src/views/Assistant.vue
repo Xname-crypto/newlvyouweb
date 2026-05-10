@@ -9,6 +9,7 @@ import { assistantService, type AssistantMessage, type AssistantSession } from '
 import { supabase } from '@/utils/supabase';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
+import { apiUrl } from '@/utils/apiBase';
 
 const query = ref('');
 const messages = ref<AssistantMessage[]>([]);
@@ -40,7 +41,7 @@ const imageModels = ref<any[]>([]);
 const selectedImageModel = ref<any>(null);
 
 const fetchModels = async () => {
-  const response = await fetch('/api/api-providers/public/?capability=chat&capability=image');
+  const response = await fetch(apiUrl('/api/api-providers/public/?capability=chat&capability=image'));
   if (!response.ok) return;
   const payload = await response.json();
   const providers = payload?.data || [];

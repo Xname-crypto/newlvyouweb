@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase'
+import { apiUrl } from '@/utils/apiBase'
 
 export interface AdminQATestMessage {
   id: number
@@ -49,7 +50,7 @@ const request = async <T>(url: string, options: RequestOptions = {}): Promise<T>
     throw new Error('未登录，无法访问管理员测试接口')
   }
 
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     ...options,
     headers: {
       'Content-Type': 'application/json',

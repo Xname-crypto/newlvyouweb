@@ -1,0 +1,7 @@
+{
+  "python": {
+    "version": "3.12",
+    "package_manager": "pip"
+  },
+  "start_command": "python manage.py migrate --noinput && python manage.py collectstatic --noinput && _startup"
+}

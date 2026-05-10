@@ -371,6 +371,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { apiUrl } from '@/utils/apiBase'
 import {
   CheckCircle2,
   ChevronRight,
@@ -423,7 +424,7 @@ const currentPage = ref(1)
 const pageSize = ref(50)
 const totalItems = ref(0)
 
-const API_URL = '/api/knowledge/'
+const API_URL = apiUrl('/api/knowledge/')
 
 const statusCounts = computed(() =>
   items.value.reduce(

@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { apiUrl } from '@/utils/apiBase';
 
 export interface AssistantSession {
   id: string;
@@ -162,7 +163,7 @@ export const assistantService = {
       // 如果已部署到线上，则使用 import.meta.env.VITE_SUPABASE_URL + /functions/v1/chat
       
       // FIX: 强制使用 Django 后端的 RAG 接口
-      const functionUrl = '/api/rag/chat/'; 
+      const functionUrl = apiUrl('/api/rag/chat/'); 
       // const functionUrl = import.meta.env.DEV 
       //   ? '/functions/v1/chat' 
       //   : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
