@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ArrowLeft, X } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
+const shouldLoadVideo = ref(false);
+const videoReady = ref(false);
+const videoErrored = ref(false);
+const videoRef = ref<HTMLVideoElement | null>(null);
+let loadTimer: number | undefined;
+let bufferTimer: number | undefined;
+let stallTimer: number | undefined;
 
 const props = defineProps<{
   videoSrc?: string;
@@ -23,6 +30,85 @@ defineEmits<{
 const goBack = () => {
   router.push('/');
 };
+
+const clearTimers = () => {
+  if (loadTimer) window.clearTimeout(loadTimer);
+  if (bufferTimer) window.clearTimeout(bufferTimer);
+  if (stallTimer) window.clearTimeout(stallTimer);
+  loadTimer = undefined;
+  bufferTimer = undefined;
+  stallTimer = undefined;
+};
+
+const scheduleVideoLoad = () => {
+  clearTimers();
+  shouldLoadVideo.value = false;
+  videoReady.value = false;
+  videoErrored.value = false;
+
+  if (!props.videoSrc) return;
+
+  loadTimer = window.setTimeout(() => {
+    shouldLoadVideo.value = true;
+  }, 650);
+};
+
+const bufferedAhead = (video: HTMLVideoElement) => {
+  try {
+    const current = video.currentTime || 0;
+    for (let i = 0; i < video.buffered.length; i += 1) {
+      if (video.buffered.start(i) <= current && video.buffered.end(i) >= current) {
+        return video.buffered.end(i) - current;
+      }
+    }
+  } catch (_e) {
+    return 0;
+  }
+  return 0;
+};
+
+const waitForBufferAndPlay = () => {
+  const video = videoRef.value;
+  if (!video || videoErrored.value) return;
+
+  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  const requiredBuffer = duration > 0 ? Math.min(4, Math.max(1.5, duration * 0.2)) : 2.5;
+
+  if (video.readyState >= 4 || bufferedAhead(video) >= requiredBuffer) {
+    video.play().catch(() => {
+      videoReady.value = false;
+    });
+    return;
+  }
+
+  bufferTimer = window.setTimeout(waitForBufferAndPlay, 240);
+};
+
+const handleVideoCanPlay = () => {
+  waitForBufferAndPlay();
+};
+
+const handleVideoPlaying = () => {
+  if (stallTimer) window.clearTimeout(stallTimer);
+  videoErrored.value = false;
+  videoReady.value = true;
+};
+
+const handleVideoWaiting = () => {
+  if (stallTimer) window.clearTimeout(stallTimer);
+  stallTimer = window.setTimeout(() => {
+    videoReady.value = false;
+  }, 420);
+};
+
+const handleVideoError = () => {
+  videoErrored.value = true;
+  videoReady.value = false;
+};
+
+onMounted(scheduleVideoLoad);
+watch(() => props.videoSrc, scheduleVideoLoad);
+onBeforeUnmount(clearTimers);
 </script>
 
 <template>
@@ -46,23 +132,38 @@ const goBack = () => {
           <ArrowLeft class="w-6 h-6 transition-transform group-hover:-translate-x-1" />
         </button>
 
-        <img
-          v-if="videoPoster"
-          :src="videoPoster"
-          alt=""
-          class="absolute inset-0 h-full w-full bg-[#f8f7f5] object-cover"
+        <div
+          class="auth-video-fallback absolute inset-0 h-full w-full transition-opacity duration-500"
+          :class="videoReady ? 'opacity-0' : 'opacity-100'"
           aria-hidden="true"
-        />
+        >
+          <img
+            v-if="videoPoster"
+            :src="videoPoster"
+            alt=""
+            class="h-full w-full object-cover"
+          />
+          <div v-else class="flex h-full w-full items-center justify-center bg-[#111827]">
+            <img src="/favicon-chuntianshe.png" alt="" class="h-28 w-28 object-contain opacity-90" />
+          </div>
+        </div>
 
         <video
-          v-if="props.videoSrc"
-          class="auth-layout-video absolute inset-0 h-full w-full object-cover"
-          autoplay 
+          v-if="props.videoSrc && shouldLoadVideo && !videoErrored"
+          ref="videoRef"
+          class="auth-layout-video absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+          :class="videoReady ? 'opacity-100' : 'opacity-0'"
           muted 
           loop 
           preload="auto"
           playsinline
           :poster="videoPoster || undefined"
+          @canplay="handleVideoCanPlay"
+          @canplaythrough="handleVideoCanPlay"
+          @playing="handleVideoPlaying"
+          @waiting="handleVideoWaiting"
+          @stalled="handleVideoWaiting"
+          @error="handleVideoError"
         >
           <source :src="props.videoSrc" type="video/mp4">
         </video>
@@ -99,6 +200,12 @@ const goBack = () => {
 <style scoped>
 .auth-layout-video {
   animation: auth-video-in 180ms ease-out both;
+  will-change: opacity;
+  transform: translateZ(0);
+}
+
+.auth-video-fallback {
+  z-index: 0;
 }
 
 @keyframes auth-video-in {
