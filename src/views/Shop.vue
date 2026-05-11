@@ -263,9 +263,9 @@ onMounted(() => {
           <article v-for="(product, index) in pagedTrendProducts" :key="product.id" class="group cursor-pointer text-center" @click="goCatalogueCategory(product.category)">
             <div class="relative mx-auto aspect-[3/4] w-full overflow-hidden bg-[#edf1eb]">
               <router-link v-if="product.productId" :to="{ name: 'product-detail', params: { id: String(product.productId) } }">
-                <img v-if="product.image" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="product.image" :alt="product.name" decoding="async" loading="eager" fetchpriority="high" @error="hideBrokenProductImage" />
+                <img v-if="product.image" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="product.image" :alt="product.name" decoding="async" loading="lazy" @error="hideBrokenProductImage" />
               </router-link>
-              <img v-else-if="product.image" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="product.image" :alt="product.name" decoding="async" loading="eager" fetchpriority="high" @error="hideBrokenProductImage" />
+              <img v-else-if="product.image" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="product.image" :alt="product.name" decoding="async" loading="lazy" @error="hideBrokenProductImage" />
               <button class="absolute right-4 top-4 flex h-9 w-9 items-center justify-center bg-white/90 text-[#26352b] transition-colors hover:bg-[#fbd784]">
                 <Heart :size="16" />
               </button>
@@ -309,7 +309,7 @@ onMounted(() => {
         <div class="grid grid-cols-1 gap-7 md:grid-cols-3">
           <article v-for="card in categoryCards" :key="card.name" class="group">
             <div class="aspect-[1.05/1] overflow-hidden bg-[#edf1eb]">
-              <img class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="card.image" :alt="card.name" width="760" height="724" decoding="async" fetchpriority="high" />
+              <img class="h-full w-full object-cover transition duration-500 group-hover:scale-105" :src="card.image" :alt="card.name" width="760" height="724" decoding="async" loading="lazy" />
             </div>
             <h3 class="mt-5 text-center text-sm font-black text-[#2f3e34]">{{ card.name }}</h3>
             <p class="mt-2 text-center text-xs font-semibold text-[#8b958d]">{{ card.text }}</p>

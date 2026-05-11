@@ -611,7 +611,7 @@ onUnmounted(() => {
               <tr v-for="product in pagedProducts" :key="product.id">
                 <td class="text-center">
                   <div class="product-thumb">
-                    <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" />
+                    <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" decoding="async" />
                   </div>
                 </td>
                 <td>

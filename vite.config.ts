@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => {
   return {
     build: {
       sourcemap: 'hidden',
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+        },
+      },
     },
     server: {
       hmr: {

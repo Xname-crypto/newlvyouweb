@@ -457,7 +457,7 @@ onMounted(loadProducts)
               <article v-for="product in pagedProducts" :key="product.id" class="group">
                 <div class="relative aspect-square overflow-hidden bg-[#f2f2f2]">
                   <router-link class="block h-full w-full" :to="{ name: 'product-detail', params: { id: String(product.id) } }">
-                    <img v-if="getProductImage(product)" class="h-full w-full object-cover object-top transition duration-500 group-hover:scale-[1.04]" :src="getProductImage(product)" :alt="product.name" @error="useFallbackProductImage($event, product)" />
+                    <img v-if="getProductImage(product)" class="h-full w-full object-cover object-top transition duration-500 group-hover:scale-[1.04]" :src="getProductImage(product)" :alt="product.name" loading="lazy" decoding="async" @error="useFallbackProductImage($event, product)" />
                   </router-link>
                   <button
                     class="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full transition-colors"

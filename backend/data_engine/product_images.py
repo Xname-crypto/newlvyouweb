@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import io
 import mimetypes
 import os
 import re
@@ -16,6 +17,8 @@ from supabase import create_client
 
 DATA_IMAGE_RE = re.compile(r"^data:(?P<mime>image/[-+.\w]+);base64,(?P<data>.*)$", re.DOTALL)
 MAX_INLINE_IMAGE_BYTES = 12 * 1024 * 1024
+PRODUCT_IMAGE_MAX_DIMENSION = 1600
+PRODUCT_IMAGE_WEBP_QUALITY = 82
 SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_PRODUCT_IMAGE_BUCKET", "media")
 SUPABASE_STORAGE_PREFIX = os.getenv("SUPABASE_PRODUCT_IMAGE_PREFIX", "product-images").strip("/")
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
@@ -137,10 +140,48 @@ def _upload_product_image_to_supabase(content: bytes, content_type: str, ext: st
         return ""
 
 
+def optimize_product_image(content: bytes, content_type: str) -> tuple[bytes, str]:
+    normalized_type = (content_type or "").split(";")[0].strip().lower()
+    if normalized_type in {"image/gif", "image/svg+xml"}:
+        return content, content_type
+
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(content)) as image:
+            image = ImageOps.exif_transpose(image)
+            has_alpha = image.mode in {"RGBA", "LA"} or (
+                image.mode == "P" and "transparency" in image.info
+            )
+            image = image.convert("RGBA" if has_alpha else "RGB")
+            image.thumbnail(
+                (PRODUCT_IMAGE_MAX_DIMENSION, PRODUCT_IMAGE_MAX_DIMENSION),
+                Image.Resampling.LANCZOS,
+            )
+
+            output = io.BytesIO()
+            image.save(
+                output,
+                format="WEBP",
+                quality=PRODUCT_IMAGE_WEBP_QUALITY,
+                method=6,
+            )
+            optimized = output.getvalue()
+            if optimized and len(optimized) < len(content):
+                return optimized, "image/webp"
+    except Exception as exc:
+        print(f"[PRODUCT_IMAGE] Optimization skipped: {exc}")
+
+    return content, content_type
+
+
 def store_image_bytes(content: bytes, content_type: str, *, prefer_supabase: bool = True) -> str:
+    content, content_type = optimize_product_image(content, content_type)
     ext = mimetypes.guess_extension(content_type) or ".png"
     if ext == ".jpe":
         ext = ".jpg"
+    elif content_type == "image/webp":
+        ext = ".webp"
 
     if prefer_supabase:
         public_url = _upload_product_image_to_supabase(content, content_type, ext)
