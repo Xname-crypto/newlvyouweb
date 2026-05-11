@@ -4,6 +4,7 @@ set -eu
 optimize_video() {
   input="$1"
   output="${input%.mp4}.optimized.mp4"
+  poster="${input%.mp4}.poster.jpg"
 
   if [ ! -f "$input" ]; then
     echo "Skipping missing video: $input"
@@ -23,6 +24,12 @@ optimize_video() {
     -movflags +faststart \
     "$output"
   mv "$output" "$input"
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -i "$input" \
+    -frames:v 1 \
+    -q:v 4 \
+    "$poster"
 }
 
 optimize_video public/video/login-visual.mp4

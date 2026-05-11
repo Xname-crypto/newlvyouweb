@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { ArrowLeft, X } from 'lucide-vue-next';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const shouldLoadVideo = ref(false);
-let videoTimer: number | undefined;
 
 const props = defineProps<{
   videoSrc?: string;
   showBack?: boolean;
   contentOffsetClass?: string;
 }>();
+
+const videoPoster = computed(() => {
+  if (!props.videoSrc) {
+    return '';
+  }
+
+  const [path, query = ''] = props.videoSrc.split('?');
+  const posterPath = path.replace(/\.mp4$/i, '.poster.jpg');
+  return query ? `${posterPath}?${query}` : posterPath;
+});
 
 defineEmits<{
   (e: 'back'): void
@@ -20,18 +28,6 @@ defineEmits<{
 const goBack = () => {
   router.push('/');
 };
-
-onMounted(() => {
-  videoTimer = window.setTimeout(() => {
-    shouldLoadVideo.value = true;
-  }, 700);
-});
-
-onBeforeUnmount(() => {
-  if (videoTimer) {
-    window.clearTimeout(videoTimer);
-  }
-});
 </script>
 
 <template>
@@ -55,14 +51,23 @@ onBeforeUnmount(() => {
           <ArrowLeft class="w-6 h-6 transition-transform group-hover:-translate-x-1" />
         </button>
 
-        <video 
-          v-if="props.videoSrc && shouldLoadVideo"
-          class="auth-layout-video absolute inset-0 h-full w-full bg-[#f8f7f5] object-cover"
+        <img
+          v-if="videoPoster"
+          :src="videoPoster"
+          alt=""
+          class="absolute inset-0 h-full w-full bg-[#f8f7f5] object-cover"
+          aria-hidden="true"
+        />
+
+        <video
+          v-if="props.videoSrc"
+          class="auth-layout-video absolute inset-0 h-full w-full object-cover"
           autoplay 
           muted 
           loop 
-          preload="none"
+          preload="metadata"
           playsinline
+          :poster="videoPoster"
         >
           <source :src="props.videoSrc" type="video/mp4">
         </video>
