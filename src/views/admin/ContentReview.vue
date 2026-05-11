@@ -372,6 +372,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiUrl } from '@/utils/apiBase'
+import { safeGetSupabaseSession } from '@/utils/supabase'
 import {
   CheckCircle2,
   ChevronRight,
@@ -425,6 +426,47 @@ const pageSize = ref(50)
 const totalItems = ref(0)
 
 const API_URL = apiUrl('/api/knowledge/')
+
+const getAdminHeaders = async () => {
+  const session = await safeGetSupabaseSession()
+  const token = session?.access_token
+  if (!token) {
+    throw new Error('请先登录管理员账号后再操作')
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  }
+}
+
+const updateKnowledgeItem = async (id: number, payload: Record<string, unknown>) => {
+  const response = await fetch(`${API_URL}${id}/?source=local`, {
+    method: 'PUT',
+    headers: await getAdminHeaders(),
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`
+    try {
+      const text = await response.text()
+      if (text) {
+        try {
+          const data = JSON.parse(text)
+          message = data.error || data.detail || text
+        } catch {
+          message = text
+        }
+      }
+    } catch {
+      // Keep fallback message.
+    }
+    throw new Error(message)
+  }
+
+  return response.json()
+}
 
 const statusCounts = computed(() =>
   items.value.reduce(
@@ -586,17 +628,11 @@ const approveItem = async (item: KnowledgeItem) => {
   processing.value = true
   try {
     const content = editContent.value[item.id]?.trim() || item.content
-    const response = await fetch(`${API_URL}${item.id}/?source=local`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content,
-        metadata: item.metadata,
-        status: 'active',
-      }),
+    await updateKnowledgeItem(item.id, {
+      content,
+      metadata: item.metadata,
+      status: 'active',
     })
-
-    if (!response.ok) throw new Error('Failed to approve')
 
     item.content = content
     item.status = 'active'
@@ -624,20 +660,14 @@ const cancelReject = () => {
 const confirmReject = async (item: KnowledgeItem) => {
   processing.value = true
   try {
-    const response = await fetch(`${API_URL}${item.id}/?source=local`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: item.content,
-        metadata: {
-          ...item.metadata,
-          reject_reason: rejectReason.value,
-        },
-        status: 'rejected',
-      }),
+    await updateKnowledgeItem(item.id, {
+      content: item.content,
+      metadata: {
+        ...item.metadata,
+        reject_reason: rejectReason.value,
+      },
+      status: 'rejected',
     })
-
-    if (!response.ok) throw new Error('Failed to reject')
 
     item.status = 'rejected'
     selectedItems.value.delete(item.id)
@@ -660,14 +690,10 @@ const batchApprove = async () => {
         if (!item) return
 
         const content = editContent.value[id]?.trim() || item.content
-        await fetch(`${API_URL}${id}/?source=local`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            metadata: item.metadata,
-            status: 'active',
-          }),
+        await updateKnowledgeItem(id, {
+          content,
+          metadata: item.metadata,
+          status: 'active',
         })
 
         item.content = content
@@ -696,14 +722,10 @@ const batchReject = async () => {
         const item = items.value.find((entry) => entry.id === id)
         if (!item) return
 
-        await fetch(`${API_URL}${id}/?source=local`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: item.content,
-            metadata: { ...item.metadata, batch_rejected: true },
-            status: 'rejected',
-          }),
+        await updateKnowledgeItem(id, {
+          content: item.content,
+          metadata: { ...item.metadata, batch_rejected: true },
+          status: 'rejected',
         })
 
         item.status = 'rejected'
