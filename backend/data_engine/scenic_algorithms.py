@@ -4,7 +4,6 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from math import exp, log, radians, sin, cos, asin, sqrt
-from pathlib import Path
 import hashlib
 import random
 import re
@@ -13,8 +12,8 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 import pandas as pd
 
+from .scenic_data import find_scenic_xlsx
 
-SCENIC_XLSX_SIZE = 479040
 CATEGORY_RULES: dict[str, tuple[str, ...]] = {
     "natural_landscape": (
         "山", "湖", "峡谷", "森林", "草原", "湿地", "瀑布", "海", "湾", "岛",
@@ -85,20 +84,6 @@ class ScenicModel:
     semantic_vectors: dict[str, np.ndarray]
 
 
-def _find_scenic_xlsx() -> Path:
-    root = Path(__file__).resolve().parents[2]
-    preferred = root / "旅游景点_含开放信息_配图.xlsx"
-    if preferred.exists():
-        return preferred
-    for path in root.glob("*.xlsx"):
-        try:
-            if path.stat().st_size == SCENIC_XLSX_SIZE:
-                return path
-        except OSError:
-            continue
-    raise FileNotFoundError("scenic xlsx file not found")
-
-
 def _safe_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -153,7 +138,7 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _load_records() -> list[ScenicRecord]:
-    dataframe = pd.read_excel(_find_scenic_xlsx()).fillna("")
+    dataframe = pd.read_excel(find_scenic_xlsx()).fillna("")
     cols = list(dataframe.columns)
     city, name, _star, rating, price, sales, region, coord, intro, free, opening, duration, reserve, address, image = cols[:15]
     records: list[ScenicRecord] = []

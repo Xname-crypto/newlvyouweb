@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 import re
 from typing import Iterable, Sequence
 
 from django.db.utils import OperationalError, ProgrammingError
 
 from .models import KnowledgeBase
+from .scenic_data import find_scenic_xlsx
 
 
 TAG_RULES = {
@@ -19,9 +19,6 @@ TAG_RULES = {
     "人文": ["博物馆", "纪念馆", "历史", "古迹", "文化", "建筑", "寺", "庙", "展馆"],
     "亲子": ["亲子", "乐园", "动物园", "海洋馆", "科技馆", "儿童", "家庭"],
 }
-
-SCENIC_INFO_XLSX = "旅游景点_含开放信息_配图.xlsx"
-
 
 @dataclass(slots=True)
 class SpotRecord:
@@ -140,15 +137,12 @@ def _load_spot_extra_info() -> tuple[dict[tuple[str, str], SpotExtraInfo], dict[
     by_city_and_name: dict[tuple[str, str], SpotExtraInfo] = {}
     by_name: dict[str, SpotExtraInfo] = {}
 
-    path = Path(__file__).resolve().parents[2] / SCENIC_INFO_XLSX
-    if not path.exists():
-        return by_city_and_name, by_name
-
     try:
         import pandas as pd
 
+        path = find_scenic_xlsx()
         dataframe = pd.read_excel(path).fillna("")
-    except Exception:
+    except (Exception, FileNotFoundError):
         return by_city_and_name, by_name
 
     for _, row in dataframe.iterrows():
@@ -184,15 +178,12 @@ def _load_spot_extra_info() -> tuple[dict[tuple[str, str], SpotExtraInfo], dict[
 
 @lru_cache(maxsize=1)
 def _load_xlsx_spots() -> list[SpotRecord]:
-    path = Path(__file__).resolve().parents[2] / SCENIC_INFO_XLSX
-    if not path.exists():
-        return []
-
     try:
         import pandas as pd
 
+        path = find_scenic_xlsx()
         dataframe = pd.read_excel(path).fillna("")
-    except Exception:
+    except (Exception, FileNotFoundError):
         return []
 
     spots: list[SpotRecord] = []
