@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ArrowLeft, X } from 'lucide-vue-next';
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
 const shouldLoadVideo = ref(false);
+let videoTimer: number | undefined;
 
 const props = defineProps<{
   videoSrc?: string;
@@ -21,9 +22,15 @@ const goBack = () => {
 };
 
 onMounted(() => {
-  window.requestAnimationFrame(() => {
+  videoTimer = window.setTimeout(() => {
     shouldLoadVideo.value = true;
-  });
+  }, 700);
+});
+
+onBeforeUnmount(() => {
+  if (videoTimer) {
+    window.clearTimeout(videoTimer);
+  }
 });
 </script>
 
@@ -54,7 +61,7 @@ onMounted(() => {
           autoplay 
           muted 
           loop 
-          preload="metadata"
+          preload="none"
           playsinline
         >
           <source :src="props.videoSrc" type="video/mp4">

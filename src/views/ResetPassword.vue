@@ -5,7 +5,7 @@ import { supabase } from '@/utils/supabase';
 import AuthLayout from '@/components/AuthLayout.vue';
 import { Loader2 } from 'lucide-vue-next';
 
-const forgotPasswordVideo = '/video/fp_v3.mp4';
+const forgotPasswordVideo = '/video/fp_v3.mp4?v=auth-lite-1';
 
 const router = useRouter();
 const password = ref('');

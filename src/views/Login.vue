@@ -6,7 +6,7 @@ import AuthLayout from '@/components/AuthLayout.vue';
 import FuzzyText from '@/components/animations/FuzzyText.vue';
 import { Loader2 } from 'lucide-vue-next';
 
-const loginVideo = '/video/login-visual.mp4';
+const loginVideo = '/video/login-visual.mp4?v=auth-lite-1';
 
 const router = useRouter();
 const route = useRoute();

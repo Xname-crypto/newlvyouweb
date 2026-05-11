@@ -8,7 +8,7 @@ import InterestChromaGrid from '@/components/register/InterestChromaGrid.vue';
 import RegisterStepper from '@/components/register/RegisterStepper.vue';
 import { Loader2, User, Mail, Lock, ArrowRight, Check, Sparkles, MapPin, Camera, Coffee, Mountain, Gamepad2, Music, Eye, EyeOff, Briefcase, Upload, ArrowLeft, CheckCircle2, XCircle } from 'lucide-vue-next';
 
-const registerVideo = '/video/register-visual.mp4';
+const registerVideo = '/video/register-visual.mp4?v=auth-lite-1';
 
 const router = useRouter();
 const currentStep = ref(1);
