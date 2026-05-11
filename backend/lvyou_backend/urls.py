@@ -27,6 +27,8 @@ from data_engine.views import (
     rag_chat,
     rag_upload_knowledge,
     api_providers_public,
+    api_provider_create,
+    api_provider_update_status,
     api_provider_update_config,
 )
 from data_engine.discovery_views import (
@@ -68,6 +70,8 @@ urlpatterns = [
     path('api/rag/chat/', rag_chat, name='rag_chat'),
     path('api/rag/upload/', rag_upload_knowledge, name='rag_upload'),
     path('api/api-providers/public/', api_providers_public, name='api_providers_public'),
+    path('api/api-providers/create/', api_provider_create, name='api_provider_create'),
+    path('api/api-providers/update-status/', api_provider_update_status, name='api_provider_update_status'),
     path('api/api-providers/update-config/', api_provider_update_config, name='api_provider_update_config'),
     path('api/discovery/spots/', discovery_spots, name='discovery_spots'),
     path('api/discovery/spots/<str:spot_key>/', discovery_spot_detail, name='discovery_spot_detail'),

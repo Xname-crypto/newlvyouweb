@@ -408,7 +408,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue'
-import { supabase } from '@/utils/supabase'
+import { safeGetSupabaseSession, supabase } from '@/utils/supabase'
 import { apiUrl } from '@/utils/apiBase'
 import { 
   TrendingUp, 
@@ -496,6 +496,41 @@ const hasKey = (row: Provider) => {
   return Boolean(row.has_api_key || (row.config && row.config.api_key && row.config.api_key.length > 0))
 }
 
+const adminApiRequest = async <T = any>(path: string, body?: Record<string, any>, init: RequestInit = {}) => {
+  const session = await safeGetSupabaseSession()
+  const token = session?.access_token || ''
+  if (!token) {
+    throw new Error('请先登录管理员账号')
+  }
+
+  const resp = await fetch(apiUrl(path), {
+    ...init,
+    method: init.method || 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(init.headers || {}),
+    },
+    body: body ? JSON.stringify(body) : init.body,
+  })
+
+  if (!resp.ok) {
+    let message = `HTTP ${resp.status}`
+    const text = await resp.text()
+    if (text) {
+      try {
+        const data = JSON.parse(text)
+        message = data.error || data.detail || text
+      } catch (_e) {
+        message = text
+      }
+    }
+    throw new Error(message)
+  }
+
+  return (await resp.json()) as T
+}
+
 const normalizeProviderType = (value: any): string => {
   const v = String(value || '').trim().toLowerCase()
   if (v === 'ollama') return 'ollama'
@@ -560,15 +595,19 @@ const openConfig = (row: Provider) => {
 }
 
 const logAdminAction = async (action: string, targetId: string, details: string) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-  await supabase.from('admin_logs').insert({
-    admin_id: user.id,
-    action_type: action,
-    target_id: targetId,
-    details: details
-  });
+    await supabase.from('admin_logs').insert({
+      admin_id: user.id,
+      action_type: action,
+      target_id: targetId,
+      details: details
+    });
+  } catch (error) {
+    console.warn('Admin log write skipped:', error);
+  }
 }
 
 const saveConfig = async () => {
@@ -576,24 +615,13 @@ const saveConfig = async () => {
   saving.value = true;
 
   try {
-    const resp = await fetch(apiUrl('/api/api-providers/update-config/'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        id: editingProvider.value.id,
-        base_url: editForm.base_url || null,
-        model_id: editForm.model_id || null,
-        provider_type: editForm.provider_type || 'openai_compat',
-        api_key: editForm.api_key || ''
-      })
+    await adminApiRequest('/api/api-providers/update-config/', {
+      id: editingProvider.value.id,
+      base_url: editForm.base_url || null,
+      model_id: editForm.model_id || null,
+      provider_type: editForm.provider_type || 'openai_compat',
+      api_key: editForm.api_key || ''
     })
-
-    if (!resp.ok) {
-      const text = await resp.text()
-      throw new Error(text || `HTTP ${resp.status}`)
-    }
 
     // Log action
     await logAdminAction(
@@ -611,46 +639,34 @@ const saveConfig = async () => {
 }
 const addProvider = async () => {
   if (!addForm.name || !addForm.capability) {
-    alert('请填写必要信息');
+    alert('Required provider information is missing');
     return;
   }
   saving.value = true;
-  
+
   const newProvider = {
     capability: addForm.capability,
     name: addForm.name,
     base_url: addForm.base_url || null,
     priority: addForm.priority,
-    config: {
-      api_key: addForm.api_key || null,
-      model_id: addForm.model_id || null,
-      provider_type: addForm.provider_type || 'openai_compat'
-    },
-    active: true // Default active
+    api_key: addForm.api_key || '',
+    model_id: addForm.model_id || null,
+    provider_type: addForm.provider_type || 'openai_compat',
+    active: true
   };
 
-  const { data, error } = await supabase
-    .from('api_providers')
-    .insert([newProvider])
-    .select();
-
-  if (error) {
-    alert('添加失败: ' + error.message);
-  } else {
-    // Log action
-    if (data && data[0]) {
-       await logAdminAction('add_provider', data[0].id.toString(), `Added provider: ${addForm.name}`);
-    }
-
+  try {
+    await adminApiRequest<{ data?: Provider }>('/api/api-providers/create/', newProvider);
     isAdding.value = false;
-    // Reset form
     addForm.name = '';
     addForm.base_url = '';
     addForm.api_key = '';
     addForm.model_id = '';
     addForm.provider_type = 'openai_compat';
     addForm.priority = 50;
-    refresh();
+    await refresh();
+  } catch (error: any) {
+    alert('Add failed: ' + (error?.message || 'unknown error'));
   }
   saving.value = false;
 }
@@ -752,23 +768,16 @@ const refresh = async () => {
 const toggleActive = async (row: Provider) => {
   errorMsg.value = ''
   const newState = !row.active
-  
-  const { error } = await supabase
-    .from('api_providers')
-    .update({ active: newState })
-    .eq('id', row.id)
-    
-  if (error) {
-    errorMsg.value = '状态更新失败'
-    console.error(error)
-  } else {
-    // Log action
-    await logAdminAction(
-      newState ? 'enable_provider' : 'disable_provider',
-      row.id.toString(),
-      `${newState ? '启用' : '禁用'}: ${row.name}`
-    );
+
+  try {
+    await adminApiRequest('/api/api-providers/update-status/', {
+      id: row.id,
+      active: newState
+    })
     await refresh()
+  } catch (error) {
+    errorMsg.value = 'Status update failed'
+    console.error(error)
   }
 }
 

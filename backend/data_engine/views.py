@@ -75,6 +75,32 @@ def _log_admin_action(admin_id: str, action_type: str, details: str):
         print(f"[ADMIN_LOG] Failed to log: {e}")
 
 
+API_PROVIDER_TYPES = {"ollama", "openai_compat", "zhipu", "spark"}
+API_PROVIDER_CAPABILITIES = {"chat", "image", "embedding", "search", "weather", "route"}
+
+
+def _public_api_provider(row: dict[str, Any]) -> dict[str, Any]:
+    cfg = row.get("config") if isinstance(row.get("config"), dict) else {}
+    has_api_key = bool(str(cfg.get("api_key") or "").strip())
+    public_cfg = {k: v for k, v in cfg.items() if k != "api_key"}
+    return {**row, "config": public_cfg, "has_api_key": has_api_key}
+
+
+def _provider_type_or_response(value: Any) -> tuple[str, Response | None]:
+    provider_type = str(value or "openai_compat").strip().lower() or "openai_compat"
+    if provider_type not in API_PROVIDER_TYPES:
+        return "", Response({"error": "invalid provider_type"}, status=400)
+    return provider_type, None
+
+
+def _priority_or_response(value: Any) -> tuple[int, Response | None]:
+    try:
+        priority = int(value if value not in (None, "") else 50)
+    except (TypeError, ValueError):
+        return 0, Response({"error": "priority must be a number"}, status=400)
+    return priority, None
+
+
 def _validate_file(file_obj) -> tuple[bool, str]:
     """Validate file type and size. Returns (is_valid, error_message)"""
     # Check file extension
@@ -1006,13 +1032,7 @@ def api_providers_public(request):
         resp = q.execute()
         rows = getattr(resp, "data", None) or []
 
-        sanitized = []
-        for r in rows:
-            cfg = r.get("config") if isinstance(r, dict) else None
-            has_api_key = bool(isinstance(cfg, dict) and str(cfg.get("api_key") or "").strip())
-            if isinstance(cfg, dict) and "api_key" in cfg:
-                cfg = {k: v for k, v in cfg.items() if k != "api_key"}
-            sanitized.append({**r, "config": cfg, "has_api_key": has_api_key})
+        sanitized = [_public_api_provider(r) for r in rows if isinstance(r, dict)]
 
         return Response({"data": sanitized}, status=200)
     except Exception as e:
@@ -1057,14 +1077,10 @@ def api_provider_update_config(request):
             next_cfg["api_key"] = api_key
 
         if provider_type_raw is not None:
-            provider_type = str(provider_type_raw).strip().lower()
-            allowed_provider_types = {"ollama", "openai_compat", "zhipu", "spark"}
-            if provider_type and provider_type not in allowed_provider_types:
-                return Response({"error": "invalid provider_type"}, status=400)
-            if provider_type:
-                next_cfg["provider_type"] = provider_type
-            else:
-                next_cfg.pop("provider_type", None)
+            provider_type, error_response = _provider_type_or_response(provider_type_raw)
+            if error_response:
+                return error_response
+            next_cfg["provider_type"] = provider_type
 
         base_url = str(base_url_raw).strip() if base_url_raw is not None else ""
         updates = {"base_url": base_url or None, "config": next_cfg}
@@ -1088,6 +1104,96 @@ def api_provider_update_config(request):
             },
             status=200,
         )
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(["POST"])
+@_require_admin
+def api_provider_create(request):
+    supabase = _get_supabase()
+    if not supabase:
+        return Response({"error": "SUPABASE_URL/SUPABASE_KEY not configured"}, status=500)
+
+    name = str(request.data.get("name") or "").strip()
+    capability = str(request.data.get("capability") or "").strip().lower()
+    if not name:
+        return Response({"error": "name is required"}, status=400)
+    if capability not in API_PROVIDER_CAPABILITIES:
+        return Response({"error": "invalid capability"}, status=400)
+
+    provider_type, error_response = _provider_type_or_response(request.data.get("provider_type"))
+    if error_response:
+        return error_response
+
+    priority, error_response = _priority_or_response(request.data.get("priority"))
+    if error_response:
+        return error_response
+
+    config = {
+        "provider_type": provider_type,
+    }
+    model_id = str(request.data.get("model_id") or "").strip()
+    if model_id:
+        config["model_id"] = model_id
+
+    api_key = str(request.data.get("api_key") or "").strip()
+    if api_key:
+        config["api_key"] = api_key
+
+    base_url = str(request.data.get("base_url") or "").strip()
+    row = {
+        "capability": capability,
+        "name": name,
+        "base_url": base_url or None,
+        "priority": priority,
+        "config": config,
+        "active": bool(request.data.get("active", True)),
+    }
+
+    try:
+        resp = supabase.from_("api_providers").insert(row).execute()
+        rows = getattr(resp, "data", None) or []
+        created = rows[0] if rows else row
+
+        admin_id = getattr(request, 'auth_user_id', 'unknown')
+        _log_admin_action(admin_id, 'api_provider_create', f"Created provider {name}")
+
+        return Response({"data": _public_api_provider(created)}, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(["POST"])
+@_require_admin
+def api_provider_update_status(request):
+    supabase = _get_supabase()
+    if not supabase:
+        return Response({"error": "SUPABASE_URL/SUPABASE_KEY not configured"}, status=500)
+
+    provider_id = request.data.get("id") or request.data.get("provider_id") or request.data.get("providerId")
+    if provider_id in (None, ""):
+        return Response({"error": "provider id is required"}, status=400)
+
+    if "active" not in request.data:
+        return Response({"error": "active is required"}, status=400)
+    active = bool(request.data.get("active"))
+
+    try:
+        row_resp = supabase.from_("api_providers").select("id,name").eq("id", provider_id).limit(1).execute()
+        rows = getattr(row_resp, "data", None) or []
+        if not rows:
+            return Response({"error": "provider not found"}, status=404)
+
+        resp = supabase.from_("api_providers").update({"active": active}).eq("id", provider_id).execute()
+        updated_rows = getattr(resp, "data", None) or []
+        updated = updated_rows[0] if updated_rows else {**rows[0], "active": active}
+
+        admin_id = getattr(request, 'auth_user_id', 'unknown')
+        action = 'api_provider_enable' if active else 'api_provider_disable'
+        _log_admin_action(admin_id, action, f"{'Enabled' if active else 'Disabled'} provider {rows[0].get('name')}")
+
+        return Response({"data": _public_api_provider(updated)}, status=200)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
