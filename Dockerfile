@@ -3,7 +3,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN apk add --no-cache ffmpeg && sh scripts/optimize-auth-videos.sh
 RUN npm run build
 
 FROM nginx:1.27-alpine
