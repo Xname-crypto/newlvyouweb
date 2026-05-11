@@ -13,13 +13,13 @@ optimize_video() {
   echo "Optimizing $input"
   ffmpeg -hide_banner -loglevel error -y \
     -i "$input" \
-    -vf "scale='if(gt(a,1),-2,480)':'if(gt(a,1),480,-2)',fps=20" \
+    -vf "scale='if(gt(a,1),-2,720)':'if(gt(a,1),720,-2)',fps=24" \
     -an \
     -c:v libx264 \
     -profile:v main \
     -pix_fmt yuv420p \
     -preset veryfast \
-    -crf 34 \
+    -crf 28 \
     -movflags +faststart \
     "$output"
   mv "$output" "$input"
