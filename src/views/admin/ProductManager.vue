@@ -38,10 +38,12 @@ const PAGE_SIZE = 8
 const DEFAULT_CATEGORY_OPTIONS = ['\u660e\u4fe1\u7247', '\u670d\u9970', '\u914d\u9970', '\u6587\u521b', '\u7eaa\u5ff5\u54c1']
 const STOCK_IN = '有库存'
 const STOCK_OUT = '缺货'
+const STOCK_INACTIVE = '已下架'
 
 const products = ref<Product[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const togglingProductId = ref<number | null>(null)
 const errorMessage = ref('')
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -185,16 +187,28 @@ const filteredCategoryOptions = computed(() => {
 })
 
 const getProductStockStatus = (product: Product) => {
-  if (!product.is_active || Number(product.available_stock || 0) <= 0) return STOCK_OUT
+  if (!product.is_active) return STOCK_INACTIVE
+  if (Number(product.available_stock || 0) <= 0) return STOCK_OUT
   const metadataStatus = product.metadata?.stock_status
   if (metadataStatus) return normalizeStockStatus(metadataStatus)
   return STOCK_IN
 }
 
+const getProductStockClass = (product: Product) => ({
+  'stock-pill--out': getProductStockStatus(product) === STOCK_OUT,
+  'stock-pill--inactive': getProductStockStatus(product) === STOCK_INACTIVE,
+})
+
 const sortProductsByStock = (items: Product[]) =>
   [...items].sort((a, b) => {
-    const stockRankA = getProductStockStatus(a) === STOCK_OUT ? 1 : 0
-    const stockRankB = getProductStockStatus(b) === STOCK_OUT ? 1 : 0
+    const rank = (product: Product) => {
+      const status = getProductStockStatus(product)
+      if (status === STOCK_INACTIVE) return 2
+      if (status === STOCK_OUT) return 1
+      return 0
+    }
+    const stockRankA = rank(a)
+    const stockRankB = rank(b)
     if (stockRankA !== stockRankB) return stockRankA - stockRankB
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   })
@@ -210,6 +224,7 @@ const filteredProducts = computed(() => {
       product.sku,
       product.category,
       product.description,
+      product.is_active ? '上架' : STOCK_INACTIVE,
       metadata.slug,
       metadata.stock_status,
       normalizeStockStatus(metadata.stock_status),
@@ -502,6 +517,29 @@ const saveProduct = async () => {
   }
 }
 
+const isProductToggling = (product: Product) => togglingProductId.value === product.id
+
+const toggleProductActive = async (product: Product) => {
+  const nextActive = !product.is_active
+  if (!nextActive) {
+    const confirmed = window.confirm(`确定下架「${product.name}」吗？下架后前台将不再显示该商品。`)
+    if (!confirmed) return
+  }
+
+  togglingProductId.value = product.id
+  errorMessage.value = ''
+  try {
+    const savedProduct = await commerceService.updateProduct(product.id, {
+      is_active: nextActive,
+    })
+    products.value = products.value.map((item) => (item.id === savedProduct.id ? savedProduct : item))
+  } catch (error) {
+    errorMessage.value = String((error as any)?.message || error || (nextActive ? '商品上架失败' : '商品下架失败'))
+  } finally {
+    if (togglingProductId.value === product.id) togglingProductId.value = null
+  }
+}
+
 const changePage = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
@@ -584,15 +622,27 @@ onUnmounted(() => {
                 <td>{{ product.sku }}</td>
                 <td>{{ formatPrice(product) }}</td>
                 <td>
-                  <span class="stock-pill" :class="{ 'stock-pill--out': getProductStockStatus(product) === STOCK_OUT }">
+                  <span class="stock-pill" :class="getProductStockClass(product)">
                     {{ getProductStockStatus(product) }}
                   </span>
                 </td>
                 <td>{{ product.category || '-' }}</td>
-                <td class="text-center">
+                <td>
+                  <div class="product-actions">
+                    <button
+                      class="toggle-product-btn"
+                      :class="{ 'toggle-product-btn--restore': !product.is_active }"
+                      type="button"
+                      :disabled="isProductToggling(product)"
+                      :title="product.is_active ? '下架商品' : '恢复上架'"
+                      @click="toggleProductActive(product)"
+                    >
+                      {{ isProductToggling(product) ? '处理中' : product.is_active ? '下架' : '恢复' }}
+                    </button>
                   <button class="action-btn" type="button" title="编辑商品" @click="editProduct(product)">
                     <MoreHorizontal class="h-5 w-5" />
                   </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -1104,6 +1154,51 @@ onUnmounted(() => {
   color: #0f172a;
 }
 
+.product-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.toggle-product-btn {
+  min-width: 4.5rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fecdd3;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #e11d48;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+
+.toggle-product-btn:hover {
+  border-color: #fb7185;
+  background: #ffe4e6;
+}
+
+.toggle-product-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.toggle-product-btn--restore {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #16a35f;
+}
+
+.toggle-product-btn--restore:hover {
+  border-color: #86efac;
+  background: #dcfce7;
+}
+
 .action-btn {
   width: 2.25rem;
   height: 2.25rem;
@@ -1132,6 +1227,12 @@ onUnmounted(() => {
   border-color: #fecdd3;
   background: #fff1f2;
   color: #e11d48;
+}
+
+.stock-pill--inactive {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .list-empty-state {
