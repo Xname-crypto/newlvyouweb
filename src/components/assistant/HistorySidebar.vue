@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
-import { History, Pin, MoreHorizontal, Clock, Plus, MessageSquare } from 'lucide-vue-next';
+import { ref, onMounted } from 'vue';
+import { History, Pin, Clock, Plus, MessageSquare, Trash2 } from 'lucide-vue-next';
 import { assistantService, type AssistantSession } from '@/services/assistantService';
 import { supabase } from '@/utils/supabase';
 
@@ -9,8 +9,9 @@ const isPinned = ref(false);
 const sessions = ref<AssistantSession[]>([]);
 const isLoading = ref(false);
 const user = ref<any>(null);
+const deletingSessionId = ref<string | null>(null);
 
-const emit = defineEmits(['select-session', 'new-chat']);
+const emit = defineEmits(['select-session', 'new-chat', 'delete-session']);
 
 const fetchSessions = async () => {
   if (!user.value) return;
@@ -47,6 +48,24 @@ const selectSession = (session: AssistantSession) => {
 
 const newChat = () => {
   emit('new-chat');
+};
+
+const deleteSession = async (session: AssistantSession, event: MouseEvent) => {
+  event.stopPropagation();
+  if (deletingSessionId.value) return;
+  if (!window.confirm(`删除会话“${session.title || '未命名会话'}”？`)) return;
+
+  deletingSessionId.value = session.id;
+  try {
+    await assistantService.deleteSession(session.id);
+    sessions.value = sessions.value.filter((item) => item.id !== session.id);
+    emit('delete-session', session.id);
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    window.alert(error instanceof Error ? error.message : '删除会话失败，请稍后重试。');
+  } finally {
+    deletingSessionId.value = null;
+  }
 };
 
 onMounted(async () => {
@@ -127,17 +146,31 @@ defineExpose({ refresh: fetchSessions });
         <div v-else>
           <div class="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Recent</div>
           <div class="space-y-0.5">
-            <button 
+            <div 
               v-for="session in sessions" 
               :key="session.id"
+              role="button"
+              tabindex="0"
               @click="selectSession(session)"
-              class="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-teal-700 transition-colors truncate block group/item relative"
+              @keydown.enter.prevent="selectSession(session)"
+              @keydown.space.prevent="selectSession(session)"
+              class="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-teal-700 transition-colors block group/item relative"
             >
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 min-w-0">
                 <MessageSquare class="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span class="truncate block pr-6">{{ session.title }}</span>
+                <span class="truncate block flex-1 pr-8">{{ session.title }}</span>
+                <button
+                  type="button"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-gray-300 opacity-0 group-hover/item:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all disabled:opacity-60"
+                  :disabled="deletingSessionId === session.id"
+                  title="删除会话"
+                  @click="deleteSession(session, $event)"
+                >
+                  <Trash2 v-if="deletingSessionId !== session.id" class="w-3.5 h-3.5" />
+                  <Clock v-else class="w-3.5 h-3.5 animate-spin" />
+                </button>
               </div>
-            </button>
+            </div>
           </div>
         </div>
       </div>

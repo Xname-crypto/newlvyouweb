@@ -26,6 +26,7 @@ from data_engine.views import (
     AdminQATestSessionViewSet,
     rag_chat,
     rag_upload_knowledge,
+    assistant_session_delete,
     api_providers_public,
     api_provider_create,
     api_provider_update_status,
@@ -69,6 +70,7 @@ urlpatterns = [
     # RAG Endpoints
     path('api/rag/chat/', rag_chat, name='rag_chat'),
     path('api/rag/upload/', rag_upload_knowledge, name='rag_upload'),
+    path('api/assistant/sessions/<str:session_id>/', assistant_session_delete, name='assistant_session_delete'),
     path('api/api-providers/public/', api_providers_public, name='api_providers_public'),
     path('api/api-providers/create/', api_provider_create, name='api_provider_create'),
     path('api/api-providers/update-status/', api_provider_update_status, name='api_provider_update_status'),

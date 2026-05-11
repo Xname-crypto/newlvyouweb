@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, nextTick, onMounted } from 'vue';
 import Sidebar from '@/components/community/Sidebar.vue';
 import Navigation from '@/components/Navigation.vue';
 import HistorySidebar from '@/components/assistant/HistorySidebar.vue';
 import ImageLoading from '@/components/assistant/ImageLoading.vue';
-import { Search, Sparkles, MapPin, Mic, Paperclip, Image as ImageIcon, ImagePlus, Palette, Scan, LayoutGrid, Globe, CornerDownLeft, Copy, RotateCw, ThumbsUp, ThumbsDown, Share2, Edit2, X, Brain, Check, Bot } from 'lucide-vue-next';
+import { Search, Sparkles, Mic, Paperclip, Image as ImageIcon, ImagePlus, Palette, LayoutGrid, Globe, CornerDownLeft, Copy, RotateCw, ThumbsUp, ThumbsDown, X, Brain, Check, Bot } from 'lucide-vue-next';
 import { assistantService, type AssistantMessage, type AssistantSession } from '@/services/assistantService';
 import { supabase } from '@/utils/supabase';
 import { useRouter } from 'vue-router';
@@ -31,10 +31,9 @@ const submitStatusText = ref(''); // 显示当前提交状态
 // Model Selection
 const models = ref<any[]>([]);
 const selectedModel = ref<any>(null);
-const isModelMenuOpen = ref(false);
 const activeLeftTool = ref<string | null>(null);
 const leftHighlight = ref<'search' | 'image' | 'model' | null>('search');
-const isWebSearchEnabled = ref(false);
+const isKnowledgeBaseEnabled = ref(false);
 const searchState = ref<'active' | 'popover' | null>(null);
 
 const imageModels = ref<any[]>([]);
@@ -103,7 +102,6 @@ const fetchModels = async () => {
 
 const selectModel = (model: any) => {
   selectedModel.value = model;
-  isModelMenuOpen.value = false;
   activeLeftTool.value = null; // Close menu state but keep highlight on 'model'
 };
 
@@ -342,11 +340,11 @@ const handleSubmit = async () => {
             content: m.content
           }));
 
-          submitStatusText.value = '正在检索知识库...';
+          submitStatusText.value = isKnowledgeBaseEnabled.value ? '正在检索知识库...' : '正在生成回答...';
           const result = await assistantService.chat(
             context,
             selectedModel.value?.id || 'glm-4-flash',
-            isWebSearchEnabled.value,
+            isKnowledgeBaseEnabled.value,
             selectedModel.value?.provider_id
           );
           submitStatusText.value = '正在生成回答...';
@@ -396,6 +394,14 @@ const handleSelectSession = async (session: AssistantSession) => {
   currentSessionId.value = session.id;
   messages.value = await assistantService.getMessages(session.id);
   scrollToBottom();
+};
+
+const handleDeleteSession = (sessionId: string) => {
+  if (currentSessionId.value === sessionId) {
+    currentSessionId.value = null;
+    messages.value = [];
+    query.value = '';
+  }
 };
 
 const handleNewChat = () => {
@@ -718,10 +724,11 @@ const handleNewChat = () => {
                   <!-- Right Tools -->
                   <div class="flex items-center gap-2">
                     <button 
-                      @click="isWebSearchEnabled = !isWebSearchEnabled; searchState = 'active'" 
+                      @click="isKnowledgeBaseEnabled = !isKnowledgeBaseEnabled; searchState = 'active'" 
                       class="w-8 h-8 rounded-full flex items-center justify-center transition-colors" 
-                      :class="isWebSearchEnabled ? 'bg-teal-50 text-teal-600 border border-teal-200' : 'text-gray-500 hover:bg-gray-100'"
-                      title="联网搜索"
+                      :class="isKnowledgeBaseEnabled ? 'bg-teal-50 text-teal-600 border border-teal-200' : 'text-gray-500 hover:bg-gray-100'"
+                      :title="isKnowledgeBaseEnabled ? '知识库已启用' : '启用知识库'"
+                      :aria-pressed="isKnowledgeBaseEnabled"
                     >
                       <Globe class="w-4 h-4" />
                     </button>
@@ -763,6 +770,7 @@ const handleNewChat = () => {
         ref="historySidebarRef"
         @select-session="handleSelectSession"
         @new-chat="handleNewChat"
+        @delete-session="handleDeleteSession"
       />
     </div>
   </div>

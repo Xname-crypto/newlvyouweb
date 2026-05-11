@@ -836,27 +836,31 @@ def rag_chat(request):
     model = request.data.get("model")
     provider_id = request.data.get("provider_id") or request.data.get("providerId")
     knowledge_base_id = request.data.get("knowledge_base_id") or request.data.get("knowledge_base") or request.data.get("kb_id")
+    enable_knowledge_base_raw = request.data.get("enableKnowledgeBase", request.data.get("enable_knowledge_base", False))
+    enable_knowledge_base = str(enable_knowledge_base_raw).strip().lower() in ("1", "true", "yes", "on")
 
-    released_kb = _get_active_knowledge_base(knowledge_base_id)
-    if knowledge_base_id and not released_kb:
-        return Response(
-            {
-                "response": "当前知识库尚未通过管理员测试，暂时不能给用户使用。",
-                "personality": {},
-                "knowledge_base_status": "pending_review",
-            },
-            status=200,
-        )
+    released_kb = None
+    if enable_knowledge_base:
+        released_kb = _get_active_knowledge_base(knowledge_base_id)
+        if knowledge_base_id and not released_kb:
+            return Response(
+                {
+                    "response": "当前知识库尚未通过管理员测试，暂时不能给用户使用。",
+                    "personality": {},
+                    "knowledge_base_status": "pending_review",
+                },
+                status=200,
+            )
 
-    if not released_kb and _has_any_knowledge_base():
-        return Response(
-            {
-                "response": "当前暂无已通过测试并启用的知识库，请联系管理员先完成测试发布。",
-                "personality": {},
-                "knowledge_base_status": "pending_review",
-            },
-            status=200,
-        )
+        if not released_kb and _has_any_knowledge_base():
+            return Response(
+                {
+                    "response": "当前暂无已通过测试并启用的知识库，请联系管理员先完成测试发布。",
+                    "personality": {},
+                    "knowledge_base_status": "pending_review",
+                },
+                status=200,
+            )
 
     start_time = datetime.now()
     provider_name = "unknown"
@@ -869,6 +873,16 @@ def rag_chat(request):
 
     if not engine:
         return Response({"response": "RAG engine is not available.", "personality": {}}, status=200)
+
+    if not enable_knowledge_base and getattr(engine, "knowledge_db", None) is not None:
+        try:
+            from rag_v6 import PersonalizedRAGEngine
+
+            no_kb_engine = PersonalizedRAGEngine(None)
+            no_kb_engine.memory = engine.memory
+            engine = no_kb_engine
+        except Exception as e:
+            print(f"[RAG] no-KB engine setup failed: {e}")
 
     llm = None
     if model or provider_id:
@@ -952,6 +966,41 @@ def rag_chat(request):
     _log_api_usage(provider_name, "chat", latency, success, {"model": model, "provider_id": provider_id})
 
     return Response({"response": response_text, "personality": personality_dict, "knowledge_base_status": "global"}, status=200)
+
+
+@api_view(["DELETE"])
+@_require_auth
+def assistant_session_delete(request, session_id: str):
+    supabase = _get_supabase()
+    if not supabase:
+        return Response({"error": "Supabase service is not configured"}, status=500)
+
+    user_id = getattr(request, "auth_user_id", "") or get_user_id_from_request(request)
+    if not user_id:
+        return Response({"error": "Authentication required"}, status=401)
+
+    session_id = str(session_id or "").strip()
+    if not session_id:
+        return Response({"error": "session_id is required"}, status=400)
+
+    try:
+        existing = (
+            supabase.from_("assistant_sessions")
+            .select("id,user_id")
+            .eq("id", session_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(existing, "data", None) or []
+        if not rows:
+            return Response({"error": "session not found"}, status=404)
+
+        supabase.from_("assistant_messages").delete().eq("session_id", session_id).execute()
+        supabase.from_("assistant_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+        return Response(status=204)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=500)
 
 
 @api_view(["POST"])

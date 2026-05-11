@@ -72,6 +72,36 @@ export const assistantService = {
     return data as AssistantSession;
   },
 
+  async deleteSession(sessionId: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('User not logged in');
+
+    const response = await fetch(apiUrl(`/api/assistant/sessions/${sessionId}/`), {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      let message = `Delete session failed: ${response.status}`;
+      try {
+        const text = await response.text();
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            message = data.error || data.detail || text;
+          } catch {
+            message = text;
+          }
+        }
+      } catch {
+        // Keep fallback message.
+      }
+      throw new Error(message);
+    }
+  },
+
   async generateImage(prompt: string, model?: string) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('User not logged in');
@@ -158,7 +188,7 @@ export const assistantService = {
     return data.content;
   },
 
-  async chat(messages: { role: string; content: string }[], model?: string, enableWebSearch: boolean = false, providerId?: string) {
+  async chat(messages: { role: string; content: string }[], model?: string, enableKnowledgeBase: boolean = false, providerId?: string) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('User not logged in');
 
@@ -189,7 +219,7 @@ export const assistantService = {
           messages, 
           model,
           provider_id: providerId,
-          enableWebSearch
+          enableKnowledgeBase
         }),
       });
 
