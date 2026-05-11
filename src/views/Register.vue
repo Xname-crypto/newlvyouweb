@@ -100,15 +100,24 @@ const handleStep2 = async () => {
   isUsernameTouched.value = true;
   isJobTouched.value = true;
 
-  if (!formData.value.username) {
+  const username = formData.value.username.trim();
+
+  if (!username) {
     errorMsg.value = '请输入昵称';
     return;
   }
-  
+
+  if (username.length < 3) {
+    errorMsg.value = '昵称至少需要3个字符';
+    return;
+  }
+
   if (!formData.value.job) {
     errorMsg.value = '请输入职业/身份';
     return;
   }
+
+  formData.value.username = username;
   
   errorMsg.value = '';
   currentStep.value = 3;
@@ -183,6 +192,8 @@ const handleFinish = () => {
 
 const isUsernameTouched = ref(false);
 const isJobTouched = ref(false);
+
+const isUsernameValid = computed(() => formData.value.username.trim().length >= 3);
 
 const handleBack = () => {
   if (currentStep.value > 1) {
@@ -335,17 +346,20 @@ const handleBack = () => {
               placeholder="例如: 旅行家小明"
               class="w-full pl-10 pr-10 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-4 transition-all"
               :class="[
-                formData.username 
+                isUsernameValid
                   ? 'border-green-500 focus:border-green-500 focus:ring-green-500/10' 
                   : (isUsernameTouched ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : 'border-gray-200 focus:border-blue-500 focus:ring-blue-500/10')
               ]"
               @blur="isUsernameTouched = true"
             />
             <div class="absolute right-3 top-1/2 -translate-y-1/2">
-              <CheckCircle2 v-if="formData.username" class="w-5 h-5 text-green-500" />
+              <CheckCircle2 v-if="isUsernameValid" class="w-5 h-5 text-green-500" />
               <XCircle v-else-if="isUsernameTouched" class="w-5 h-5 text-red-500" />
             </div>
           </div>
+          <p v-if="isUsernameTouched && formData.username && !isUsernameValid" class="ml-1 text-xs font-medium text-red-500">
+            昵称至少需要3个字符
+          </p>
         </div>
 
         <div class="space-y-1">
