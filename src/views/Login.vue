@@ -5,7 +5,7 @@ import { clearSupabaseAuthDegraded, isSupabaseNetworkError, supabase } from '@/u
 import AuthLayout from '@/components/AuthLayout.vue';
 import { Loader2 } from 'lucide-vue-next';
 
-const loginVideo = '/video/login-visual.mp4?v=auth-balanced-1';
+const loginVideo = '/video/login-visual.mp4?v=auth-balanced-2';
 
 const router = useRouter();
 const route = useRoute();

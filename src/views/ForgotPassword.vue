@@ -4,7 +4,7 @@ import { supabase } from '@/utils/supabase';
 import AuthLayout from '@/components/AuthLayout.vue';
 import { Loader2, ArrowLeft } from 'lucide-vue-next';
 
-const forgotPasswordVideo = '/video/fp_v3.mp4?v=auth-balanced-1';
+const forgotPasswordVideo = '/video/fp_v3.mp4?v=auth-balanced-2';
 
 const email = ref('');
 const loading = ref(false);

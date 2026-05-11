@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { ArrowLeft, X } from 'lucide-vue-next';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const shouldLoadVideo = ref(false);
 const videoReady = ref(false);
 const videoErrored = ref(false);
 const videoRef = ref<HTMLVideoElement | null>(null);
-let loadTimer: number | undefined;
 let bufferTimer: number | undefined;
-let stallTimer: number | undefined;
 
 const props = defineProps<{
   videoSrc?: string;
@@ -19,8 +16,24 @@ const props = defineProps<{
   contentOffsetClass?: string;
 }>();
 
+const posterFromVideo = computed(() => {
+  const src = props.videoSrc || '';
+  if (!src) return '';
+
+  const hashIndex = src.indexOf('#');
+  const beforeHash = hashIndex >= 0 ? src.slice(0, hashIndex) : src;
+  const hash = hashIndex >= 0 ? src.slice(hashIndex) : '';
+  const queryIndex = beforeHash.indexOf('?');
+  const path = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash;
+  const query = queryIndex >= 0 ? beforeHash.slice(queryIndex) : '';
+
+  if (!path.toLowerCase().endsWith('.mp4')) return '';
+
+  return `${path.slice(0, -4)}.poster.jpg${query}${hash}`;
+});
+
 const videoPoster = computed(() => {
-  return props.posterSrc || '';
+  return props.posterSrc || posterFromVideo.value;
 });
 
 defineEmits<{
@@ -31,26 +44,17 @@ const goBack = () => {
   router.push('/');
 };
 
-const clearTimers = () => {
-  if (loadTimer) window.clearTimeout(loadTimer);
-  if (bufferTimer) window.clearTimeout(bufferTimer);
-  if (stallTimer) window.clearTimeout(stallTimer);
-  loadTimer = undefined;
-  bufferTimer = undefined;
-  stallTimer = undefined;
+const clearBufferTimer = () => {
+  if (bufferTimer) {
+    window.clearTimeout(bufferTimer);
+    bufferTimer = undefined;
+  }
 };
 
-const scheduleVideoLoad = () => {
-  clearTimers();
-  shouldLoadVideo.value = false;
+const resetVideoState = () => {
+  clearBufferTimer();
   videoReady.value = false;
   videoErrored.value = false;
-
-  if (!props.videoSrc) return;
-
-  loadTimer = window.setTimeout(() => {
-    shouldLoadVideo.value = true;
-  }, 650);
 };
 
 const bufferedAhead = (video: HTMLVideoElement) => {
@@ -64,41 +68,30 @@ const bufferedAhead = (video: HTMLVideoElement) => {
   } catch (_e) {
     return 0;
   }
+
   return 0;
 };
 
-const waitForBufferAndPlay = () => {
+const handleVideoReady = () => {
   const video = videoRef.value;
   if (!video || videoErrored.value) return;
 
-  const duration = Number.isFinite(video.duration) ? video.duration : 0;
-  const requiredBuffer = duration > 0 ? Math.min(4, Math.max(1.5, duration * 0.2)) : 2.5;
+  videoErrored.value = false;
+  video.play().catch(() => {
+    // Muted autoplay can still be interrupted by the browser; the poster remains underneath.
+  });
 
-  if (video.readyState >= 4 || bufferedAhead(video) >= requiredBuffer) {
-    video.play().catch(() => {
-      videoReady.value = false;
-    });
+  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  const requiredBuffer = duration > 0 ? Math.min(2.5, Math.max(1.2, duration * 0.12)) : 1.5;
+
+  if (video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA || bufferedAhead(video) >= requiredBuffer) {
+    clearBufferTimer();
+    videoReady.value = true;
     return;
   }
 
-  bufferTimer = window.setTimeout(waitForBufferAndPlay, 240);
-};
-
-const handleVideoCanPlay = () => {
-  waitForBufferAndPlay();
-};
-
-const handleVideoPlaying = () => {
-  if (stallTimer) window.clearTimeout(stallTimer);
-  videoErrored.value = false;
-  videoReady.value = true;
-};
-
-const handleVideoWaiting = () => {
-  if (stallTimer) window.clearTimeout(stallTimer);
-  stallTimer = window.setTimeout(() => {
-    videoReady.value = false;
-  }, 420);
+  clearBufferTimer();
+  bufferTimer = window.setTimeout(handleVideoReady, 180);
 };
 
 const handleVideoError = () => {
@@ -106,9 +99,8 @@ const handleVideoError = () => {
   videoReady.value = false;
 };
 
-onMounted(scheduleVideoLoad);
-watch(() => props.videoSrc, scheduleVideoLoad);
-onBeforeUnmount(clearTimers);
+watch(() => props.videoSrc, resetVideoState, { immediate: true });
+onBeforeUnmount(clearBufferTimer);
 </script>
 
 <template>
@@ -133,36 +125,34 @@ onBeforeUnmount(clearTimers);
         </button>
 
         <div
-          class="auth-video-fallback absolute inset-0 h-full w-full transition-opacity duration-500"
+          v-if="videoPoster"
+          class="auth-video-poster absolute inset-0 h-full w-full transition-opacity duration-300"
           :class="videoReady ? 'opacity-0' : 'opacity-100'"
           aria-hidden="true"
         >
           <img
-            v-if="videoPoster"
             :src="videoPoster"
             alt=""
             class="h-full w-full object-cover"
           />
-          <div v-else class="flex h-full w-full items-center justify-center bg-[#111827]">
-            <img src="/favicon-chuntianshe.png" alt="" class="h-28 w-28 object-contain opacity-90" />
-          </div>
         </div>
 
         <video
-          v-if="props.videoSrc && shouldLoadVideo && !videoErrored"
+          v-if="props.videoSrc && !videoErrored"
           ref="videoRef"
-          class="auth-layout-video absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+          class="auth-layout-video absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
           :class="videoReady ? 'opacity-100' : 'opacity-0'"
+          autoplay
           muted 
           loop 
           preload="auto"
           playsinline
           :poster="videoPoster || undefined"
-          @canplay="handleVideoCanPlay"
-          @canplaythrough="handleVideoCanPlay"
-          @playing="handleVideoPlaying"
-          @waiting="handleVideoWaiting"
-          @stalled="handleVideoWaiting"
+          @loadeddata="handleVideoReady"
+          @canplay="handleVideoReady"
+          @canplaythrough="handleVideoReady"
+          @playing="handleVideoReady"
+          @progress="handleVideoReady"
           @error="handleVideoError"
         >
           <source :src="props.videoSrc" type="video/mp4">
@@ -199,22 +189,12 @@ onBeforeUnmount(clearTimers);
 
 <style scoped>
 .auth-layout-video {
-  animation: auth-video-in 180ms ease-out both;
-  will-change: opacity;
+  z-index: 1;
+  will-change: opacity, transform;
   transform: translateZ(0);
 }
 
-.auth-video-fallback {
+.auth-video-poster {
   z-index: 0;
-}
-
-@keyframes auth-video-in {
-  from {
-    opacity: 0.01;
-  }
-
-  to {
-    opacity: 1;
-  }
 }
 </style>
