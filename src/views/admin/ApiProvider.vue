@@ -726,38 +726,19 @@ const refresh = async () => {
     list.value = []
   }
 
-  // Fetch Stats (Mock implementation for now as table might be empty or missing 'details' structure)
+  // Fetch Stats from backend so service-role reads are not blocked by RLS.
   try {
-    const { count: totalCalls } = await supabase.from('api_usage_logs').select('id', { count: 'exact', head: true });
-    
-    // Get today's start timestamp
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const { count: todayCalls } = await supabase
-      .from('api_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', today.toISOString());
+    const usageStats = await adminApiRequest<{
+      total_calls?: number
+      today_calls?: number
+      token_estimate?: number
+      average_latency_ms?: number
+    }>('/api/api-providers/stats/', undefined, { method: 'GET' })
 
-    // Update stats
-    stats.value[0].value = (totalCalls || 0).toLocaleString();
-    stats.value[1].value = (todayCalls || 0).toLocaleString();
-    
-    // Calculate trends (mock random small trends for liveliness if 0, or 0)
-    // If we have real data, we would compare with yesterday/last month.
-    // For now, let's just show 0 or small random if empty to look "active" if user wants, 
-    // but user asked for "real" data logic. So 0 is correct if no data.
-    // However, to make it look "real" as requested (maybe they mean "realistic fields"), I will keep trends at 0 if no data.
-    
-    // Token usage - hard to sum JSONB without a specific function or fetching all rows.
-    // For now, keep as 0 or mock a small number if calls > 0.
-    if ((totalCalls || 0) > 0) {
-        stats.value[2].value = ((totalCalls || 0) * 150).toLocaleString(); // Avg 150 tokens per call assumption
-        stats.value[3].value = '245ms'; // Mock latency
-    } else {
-        stats.value[2].value = '0';
-        stats.value[3].value = '0ms';
-    }
-
+    stats.value[0].value = (usageStats.total_calls || 0).toLocaleString()
+    stats.value[1].value = (usageStats.today_calls || 0).toLocaleString()
+    stats.value[2].value = (usageStats.token_estimate || 0).toLocaleString()
+    stats.value[3].value = `${usageStats.average_latency_ms || 0}ms`
   } catch (e) {
     console.error('Failed to fetch stats', e);
   }

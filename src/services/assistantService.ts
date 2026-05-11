@@ -114,22 +114,19 @@ export const assistantService = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('User not logged in');
 
-    const functionUrl = import.meta.env.DEV
-      ? '/functions/v1/generate-image'
-      : `${supabaseUrl()}/functions/v1/generate-image`;
-
     try {
-      // Use relative path so Vite proxy can handle it
-      // NOTE: We need to use /functions/v1 prefix which is what we configured in vite.config.ts
-      const response = await fetch(functionUrl, {
+      const response = await fetch(apiUrl('/api/assistant/generate-image/'), {
         method: 'POST',
-        headers: edgeFunctionHeaders(session.access_token),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ prompt, model }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Function failed: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`Image generation failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();

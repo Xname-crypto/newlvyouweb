@@ -2,11 +2,13 @@
 
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from typing import Any, Dict, List
 
+import requests
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -91,6 +93,186 @@ def _provider_type_or_response(value: Any) -> tuple[str, Response | None]:
     if provider_type not in API_PROVIDER_TYPES:
         return "", Response({"error": "invalid provider_type"}, status=400)
     return provider_type, None
+
+
+def _normalize_model(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _provider_config(row: dict[str, Any]) -> dict[str, Any]:
+    config = row.get("config")
+    return config if isinstance(config, dict) else {}
+
+
+def _provider_matches_model(row: dict[str, Any], model: str) -> bool:
+    if not model:
+        return False
+
+    config = _provider_config(row)
+    configured_model = _normalize_model(config.get("model_id"))
+    provider_name = _normalize_model(row.get("name"))
+
+    if configured_model and (configured_model == model or configured_model in model or model in configured_model):
+        return True
+    if provider_name and (provider_name == model or provider_name in model or model in provider_name):
+        return True
+    if "silicon" in provider_name and ("kolors" in model or "kwai" in model):
+        return True
+    if "midjourney" in provider_name and ("mj" in model or "midjourney" in model):
+        return True
+    if "doubao" in provider_name and ("doubao" in model or "seedream" in model):
+        return True
+    if "openai" in provider_name and ("dall-e" in model or "gpt-image" in model):
+        return True
+    return False
+
+
+def _select_image_provider(providers: list[dict[str, Any]], model: str) -> dict[str, Any] | None:
+    if not providers:
+        return None
+
+    requested_model = _normalize_model(model)
+    if requested_model:
+        for provider in providers:
+            if _provider_matches_model(provider, requested_model):
+                return provider
+    return providers[0]
+
+
+def _provider_api_key(row: dict[str, Any]) -> str:
+    config = _provider_config(row)
+    configured_key = str(config.get("api_key") or "").strip()
+    if configured_key:
+        return configured_key
+
+    provider_name = _normalize_model(row.get("name"))
+    if "silicon" in provider_name:
+        return os.getenv("SILICONFLOW_API_KEY", "").strip()
+    if "midjourney" in provider_name:
+        return os.getenv("MIDJOURNEY_API_KEY", "").strip()
+    if "doubao" in provider_name or "ark" in provider_name:
+        return os.getenv("ARK_API_KEY", "").strip()
+    if "openai" in provider_name:
+        return os.getenv("OPENAI_API_KEY", "").strip()
+    return ""
+
+
+def _provider_base_url(row: dict[str, Any]) -> str:
+    base_url = str(row.get("base_url") or "").strip()
+    if base_url:
+        return base_url.rstrip("/")
+
+    provider_name = _normalize_model(row.get("name"))
+    if "silicon" in provider_name:
+        return "https://api.siliconflow.cn/v1"
+    if "openai" in provider_name:
+        return "https://api.openai.com/v1"
+    return "https://ark.cn-beijing.volces.com/api/v3"
+
+
+def _image_model_for_provider(row: dict[str, Any], requested_model: str) -> str:
+    config = _provider_config(row)
+    configured_model = str(config.get("model_id") or "").strip()
+    if configured_model:
+        return configured_model
+
+    requested = str(requested_model or "").strip()
+    normalized_requested = _normalize_model(requested)
+    provider_name = _normalize_model(row.get("name"))
+    if "silicon" in provider_name:
+        if requested and ("kolors" in normalized_requested or "/" in requested):
+            return requested
+        return "Kwai-Kolors/Kolors"
+    if "midjourney" in provider_name:
+        if requested and "midjourney" not in normalized_requested:
+            return requested
+        return "mj-v6"
+    if "openai" in provider_name:
+        if requested and "openai" not in normalized_requested:
+            return requested
+        return "dall-e-3"
+    if requested and normalized_requested != provider_name:
+        return requested
+    return "doubao-seedream-5-0-260128"
+
+
+def _image_endpoint(base_url: str) -> str:
+    normalized = str(base_url or "").strip().rstrip("/")
+    if normalized.endswith("/images/generations"):
+        return normalized
+    return f"{normalized}/images/generations"
+
+
+def _extract_image_url(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+
+    candidates = payload.get("images") or payload.get("data") or []
+    if isinstance(candidates, dict):
+        candidates = [candidates]
+    if not isinstance(candidates, list):
+        candidates = []
+
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("image_url") or item.get("imageUrl")
+        if url:
+            return str(url)
+        b64_value = item.get("b64_json") or item.get("b64_image")
+        if b64_value:
+            return f"data:image/png;base64,{b64_value}"
+
+    direct_url = payload.get("url") or payload.get("image_url") or payload.get("imageUrl")
+    return str(direct_url or "")
+
+
+def _estimate_token_usage(capability: str, details: dict[str, Any] | None) -> int:
+    details = details if isinstance(details, dict) else {}
+
+    for key in ("token_estimate", "total_tokens", "tokens"):
+        value = details.get(key)
+        try:
+            if value not in (None, ""):
+                return max(0, int(float(value)))
+        except (TypeError, ValueError):
+            pass
+
+    usage = details.get("usage")
+    if isinstance(usage, dict):
+        for key in ("total_tokens", "tokens"):
+            try:
+                value = usage.get(key)
+                if value not in (None, ""):
+                    return max(0, int(float(value)))
+            except (TypeError, ValueError):
+                pass
+
+    if capability == "image":
+        prompt = str(details.get("prompt") or "")
+        return max(1000, len(prompt) // 3)
+    return 150
+
+
+def _fetch_usage_rows(supabase, max_rows: int = 10000) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    page_size = 1000
+
+    for start in range(0, max_rows, page_size):
+        end = min(start + page_size - 1, max_rows - 1)
+        resp = (
+            supabase.from_("api_usage_logs")
+            .select("id,created_at,capability,latency,details,status")
+            .order("created_at", desc=True)
+            .range(start, end)
+            .execute()
+        )
+        page = getattr(resp, "data", None) or []
+        rows.extend([row for row in page if isinstance(row, dict)])
+        if len(page) < page_size:
+            break
+
+    return rows
 
 
 def _priority_or_response(value: Any) -> tuple[int, Response | None]:
@@ -999,6 +1181,180 @@ def assistant_session_delete(request, session_id: str):
         supabase.from_("assistant_messages").delete().eq("session_id", session_id).execute()
         supabase.from_("assistant_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
         return Response(status=204)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=500)
+
+
+@api_view(["POST"])
+@_require_auth
+def assistant_generate_image(request):
+    prompt = str(request.data.get("prompt") or "").strip()
+    model = str(request.data.get("model") or "").strip()
+    if not prompt:
+        return Response({"error": "prompt is required"}, status=400)
+
+    supabase = _get_supabase()
+    if not supabase:
+        return Response({"error": "Supabase service is not configured"}, status=500)
+
+    start_time = datetime.now()
+    provider_name = "image-provider"
+    provider_id = None
+    success = False
+
+    try:
+        resp = (
+            supabase.from_("api_providers")
+            .select("id,capability,name,base_url,active,priority,config")
+            .eq("capability", "image")
+            .eq("active", True)
+            .order("priority", desc=True)
+            .execute()
+        )
+        providers = [row for row in (getattr(resp, "data", None) or []) if isinstance(row, dict)]
+        provider = _select_image_provider(providers, model)
+        if not provider:
+            latency = int((datetime.now() - start_time).total_seconds() * 1000)
+            _log_api_usage(
+                provider_name,
+                "image",
+                latency,
+                False,
+                {"model": model, "error": "No active image provider is configured"},
+            )
+            return Response({"error": "No active image provider is configured"}, status=503)
+
+        provider_name = str(provider.get("name") or "image-provider")
+        provider_id = provider.get("id")
+        api_key = _provider_api_key(provider)
+        if not api_key:
+            latency = int((datetime.now() - start_time).total_seconds() * 1000)
+            _log_api_usage(
+                provider_name,
+                "image",
+                latency,
+                False,
+                {"model": model, "provider_id": provider_id, "error": "API Key is missing"},
+            )
+            return Response({"error": f"API Key is missing for {provider_name}"}, status=503)
+
+        target_model = _image_model_for_provider(provider, model)
+        base_url = _provider_base_url(provider)
+        payload = {
+            "model": target_model,
+            "prompt": prompt,
+            "size": "1024x1024",
+            "response_format": "url",
+        }
+
+        provider_name_lower = _normalize_model(provider_name)
+        if "silicon" in provider_name_lower or "kolors" in _normalize_model(target_model):
+            payload = {
+                "model": target_model or "Kwai-Kolors/Kolors",
+                "prompt": prompt,
+                "image_size": "1024x1024",
+                "batch_size": 1,
+                "num_inference_steps": 20,
+                "guidance_scale": 7.5,
+            }
+
+        provider_response = requests.post(
+            _image_endpoint(base_url),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            json=payload,
+            timeout=90,
+        )
+        if not provider_response.ok:
+            message = provider_response.text[:1000]
+            raise RuntimeError(f"{provider_name} Error: {provider_response.status_code} {message}")
+
+        provider_payload = provider_response.json()
+        image_url = _extract_image_url(provider_payload)
+        if not image_url:
+            raise RuntimeError("No image url in provider response")
+
+        success = True
+        latency = int((datetime.now() - start_time).total_seconds() * 1000)
+        _log_api_usage(
+            provider_name,
+            "image",
+            latency,
+            True,
+            {
+                "model": target_model,
+                "provider_id": provider_id,
+                "token_estimate": max(1000, len(prompt) // 3),
+            },
+        )
+        return Response({"url": image_url, "provider": provider_name, "model": target_model}, status=200)
+    except Exception as exc:
+        latency = int((datetime.now() - start_time).total_seconds() * 1000)
+        _log_api_usage(
+            provider_name,
+            "image",
+            latency,
+            success,
+            {
+                "model": model,
+                "provider_id": provider_id,
+                "error": str(exc)[:500],
+                "token_estimate": max(1000, len(prompt) // 3),
+            },
+        )
+        return Response({"error": str(exc)}, status=502)
+
+
+@api_view(["GET"])
+@_require_admin
+def api_provider_stats(request):
+    supabase = _get_supabase()
+    if not supabase:
+        return Response({"error": "SUPABASE_URL/SUPABASE_KEY not configured"}, status=500)
+
+    try:
+        rows = _fetch_usage_rows(supabase)
+        today_start = timezone.localtime(timezone.now()).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        total_calls = len(rows)
+        today_calls = 0
+        token_estimate = 0
+        latency_values: list[int] = []
+
+        for row in rows:
+            created_at_raw = str(row.get("created_at") or "")
+            try:
+                created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
+                if timezone.is_naive(created_at):
+                    created_at = timezone.make_aware(created_at, dt_timezone.utc)
+                if timezone.localtime(created_at) >= today_start:
+                    today_calls += 1
+            except Exception:
+                pass
+
+            capability = str(row.get("capability") or "")
+            details = row.get("details") if isinstance(row.get("details"), dict) else {}
+            token_estimate += _estimate_token_usage(capability, details)
+
+            try:
+                latency = int(float(row.get("latency") or 0))
+                if latency > 0:
+                    latency_values.append(latency)
+            except (TypeError, ValueError):
+                pass
+
+        average_latency_ms = int(round(sum(latency_values) / len(latency_values))) if latency_values else 0
+        return Response(
+            {
+                "total_calls": total_calls,
+                "today_calls": today_calls,
+                "token_estimate": token_estimate,
+                "average_latency_ms": average_latency_ms,
+            },
+            status=200,
+        )
     except Exception as exc:
         return Response({"error": str(exc)}, status=500)
 
