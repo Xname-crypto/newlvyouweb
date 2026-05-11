@@ -1,4 +1,7 @@
 public/video/*.mp4 filter=lfs diff=lfs merge=lfs -text
+public/video/fp_v3.mp4 -filter -diff -merge -text
+public/video/login-visual.mp4 -filter -diff -merge -text
+public/video/register-visual.mp4 -filter -diff -merge -text
 public/fonts/*.ttf filter=lfs diff=lfs merge=lfs -text
 *.sh text eol=lf
 Dockerfile text eol=lf
