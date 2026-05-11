@@ -23,6 +23,21 @@ export interface Product {
 
 const normalizeProductImageValue = (value: unknown) => String(value || '').trim()
 
+const BACKEND_IMAGE_PATH_PREFIXES = ['/api/', '/media/']
+
+export const resolveProductImageUrl = (value: unknown) => {
+  const image = normalizeProductImageValue(value)
+  if (!image) return ''
+  if (/^(https?:|data:|blob:)/i.test(image) || image.startsWith('//')) return image
+
+  const path = image.startsWith('/') ? image : `/${image}`
+  if (BACKEND_IMAGE_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return apiUrl(path)
+  }
+
+  return path
+}
+
 export const isInlineProductImage = (value: unknown) => normalizeProductImageValue(value).startsWith('data:')
 
 export const isUsableProductImage = (value: unknown) => {
@@ -33,12 +48,12 @@ export const isUsableProductImage = (value: unknown) => {
 const getProductMetadataImages = (product: Partial<Product>) => {
   const metadata = product.metadata || {}
   const images = Array.isArray(metadata.images) ? metadata.images : []
-  return images.map(normalizeProductImageValue).filter(isUsableProductImage)
+  return images.map(resolveProductImageUrl).filter(isUsableProductImage)
 }
 
 export const getProductImages = (product: Partial<Product>) => {
   const images = [
-    normalizeProductImageValue(product.image_url),
+    resolveProductImageUrl(product.image_url),
     ...getProductMetadataImages(product),
   ].filter(isUsableProductImage)
 
@@ -261,6 +276,42 @@ const clearProductListCache = () => {
   }
 }
 
+const normalizeSnapshotImages = (snapshot: Record<string, any>) => {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot
+
+  const metadata = snapshot.metadata && typeof snapshot.metadata === 'object'
+    ? {
+        ...snapshot.metadata,
+        images: Array.isArray(snapshot.metadata.images)
+          ? snapshot.metadata.images.map(resolveProductImageUrl).filter(isUsableProductImage)
+          : snapshot.metadata.images,
+      }
+    : snapshot.metadata
+
+  return {
+    ...snapshot,
+    image_url: resolveProductImageUrl(snapshot.image_url),
+    metadata,
+  }
+}
+
+const normalizePaymentOrderImages = (order: PaymentOrder): PaymentOrder => ({
+  ...order,
+  product_snapshot: normalizeSnapshotImages(order.product_snapshot),
+})
+
+const normalizeCommerceOrderImages = (order: CommerceOrder): CommerceOrder => ({
+  ...order,
+  items: Array.isArray(order.items)
+    ? order.items.map((item) => ({
+        ...item,
+        image_url: resolveProductImageUrl(item.image_url),
+        product_snapshot: normalizeSnapshotImages(item.product_snapshot),
+      }))
+    : order.items,
+  payment_order: order.payment_order ? normalizePaymentOrderImages(order.payment_order) : order.payment_order,
+})
+
 const listPublicProducts = () => {
   const now = Date.now()
   if (productListCache && productListCache.expiresAt > now) {
@@ -335,13 +386,13 @@ export const commerceService = {
   listOrders(admin = false) {
     return request<PaymentOrder[]>(admin ? '/api/orders/?all=1' : '/api/orders/', {
       requireAuth: true,
-    })
+    }).then((orders) => orders.map(normalizePaymentOrderImages))
   },
 
   getOrder(id: number | string) {
     return request<PaymentOrder>(`/api/orders/${id}/`, {
       requireAuth: true,
-    })
+    }).then(normalizePaymentOrderImages)
   },
 
   createOrder(payload: { product_id: number; quantity: number; payment_type: 'alipay' | 'wxpay'; client_request_id?: string }) {
@@ -349,27 +400,27 @@ export const commerceService = {
       method: 'POST',
       body: payload,
       requireAuth: true,
-    })
+    }).then(normalizePaymentOrderImages)
   },
 
   createZpayPayment(orderId: number | string) {
     return request<{ order: PaymentOrder; pay_url: string }>(`/api/orders/${orderId}/zpay/`, {
       method: 'POST',
       requireAuth: true,
-    })
+    }).then((result) => ({ ...result, order: normalizePaymentOrderImages(result.order) }))
   },
 
   syncOrder(orderId: number | string) {
     return request<PaymentOrder>(`/api/orders/${orderId}/sync/`, {
       requireAuth: true,
-    })
+    }).then(normalizePaymentOrderImages)
   },
 
   cancelOrder(orderId: number | string) {
     return request<PaymentOrder>(`/api/orders/${orderId}/cancel/`, {
       method: 'POST',
       requireAuth: true,
-    })
+    }).then(normalizePaymentOrderImages)
   },
 
   listPaymentEvents(orderId?: number | string) {
@@ -382,7 +433,7 @@ export const commerceService = {
   listCheckoutOrders(admin = false) {
     return request<CommerceOrder[]>(admin ? '/api/checkout/orders/?all=1' : '/api/checkout/orders/', {
       requireAuth: true,
-    })
+    }).then((orders) => orders.map(normalizeCommerceOrderImages))
   },
 
   listCheckoutOrdersPage(params: {
@@ -400,13 +451,16 @@ export const commerceService = {
     if (params.date_to) query.set('date_to', params.date_to)
     return request<PaginatedCommerceOrders>(`/api/checkout/orders/?${query.toString()}`, {
       requireAuth: true,
-    })
+    }).then((page) => ({
+      ...page,
+      results: Array.isArray(page.results) ? page.results.map(normalizeCommerceOrderImages) : page.results,
+    }))
   },
 
   getCheckoutOrder(id: number | string) {
     return request<CommerceOrder>(`/api/checkout/orders/${id}/`, {
       requireAuth: true,
-    })
+    }).then(normalizeCommerceOrderImages)
   },
 
   createCheckoutOrder(payload: {
@@ -433,27 +487,27 @@ export const commerceService = {
       method: 'POST',
       body: payload,
       requireAuth: true,
-    })
+    }).then(normalizeCommerceOrderImages)
   },
 
   createCheckoutPayment(orderId: number | string) {
     return request<{ order: CommerceOrder; pay_url: string }>(`/api/checkout/orders/${orderId}/pay/`, {
       method: 'POST',
       requireAuth: true,
-    })
+    }).then((result) => ({ ...result, order: normalizeCommerceOrderImages(result.order) }))
   },
 
   syncCheckoutOrder(orderId: number | string) {
     return request<CommerceOrder>(`/api/checkout/orders/${orderId}/sync/`, {
       method: 'POST',
       requireAuth: true,
-    })
+    }).then(normalizeCommerceOrderImages)
   },
 
   cancelCheckoutOrder(orderId: number | string) {
     return request<CommerceOrder>(`/api/checkout/orders/${orderId}/cancel/`, {
       method: 'POST',
       requireAuth: true,
-    })
+    }).then(normalizeCommerceOrderImages)
   },
 }

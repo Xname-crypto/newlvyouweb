@@ -1,3 +1,5 @@
+import { resolveProductImageUrl } from '@/services/commerceService'
+
 export interface CartItem {
   id: string
   productId: number | null
@@ -33,7 +35,7 @@ const trimStoredText = (value: unknown, maxLength = CART_TEXT_LIMIT) => String(v
 const normalizeStoredImage = (value: unknown) => {
   const image = trimStoredText(value, CART_IMAGE_LIMIT)
   if (image.startsWith('data:')) return ''
-  return image
+  return resolveProductImageUrl(image)
 }
 
 export const getCartItemImage = (item: Partial<CartItem>) => {
