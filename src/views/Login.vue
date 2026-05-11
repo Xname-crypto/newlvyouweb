@@ -3,7 +3,6 @@ import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { clearSupabaseAuthDegraded, isSupabaseNetworkError, supabase } from '@/utils/supabase';
 import AuthLayout from '@/components/AuthLayout.vue';
-import FuzzyText from '@/components/animations/FuzzyText.vue';
 import { Loader2 } from 'lucide-vue-next';
 
 const loginVideo = '/video/login-visual.mp4?v=auth-balanced-1';
@@ -13,7 +12,6 @@ const route = useRoute();
 const email = ref('');
 const password = ref('');
 const loading = ref(false);
-const errorMsg = ref('');
 const LOGIN_TIMEOUT_MS = 12000;
 
 const withLoginTimeout = async <T,>(promise: Promise<T>): Promise<T> => {
@@ -60,7 +58,7 @@ const getLoginErrorMessage = (error: any) => {
 
 onMounted(() => {
   if (route.query.reason === 'banned') {
-    errorMsg.value = '账号已被封禁，无法登录。';
+    window.alert('登录失败\n\n账号已被封禁，无法登录。');
   }
 });
 
@@ -69,13 +67,12 @@ const handleLogin = async () => {
   const normalizedPassword = password.value;
 
   if (!normalizedEmail || !normalizedPassword) {
-    errorMsg.value = '请输入邮箱和密码。';
+    window.alert('登录失败\n\n请输入邮箱和密码。');
     return;
   }
 
   try {
     loading.value = true;
-    errorMsg.value = '';
     clearSupabaseAuthDegraded();
 
     const {
@@ -113,7 +110,7 @@ const handleLogin = async () => {
       error,
     });
 
-    errorMsg.value = getLoginErrorMessage(error);
+    window.alert(`登录失败\n\n${getLoginErrorMessage(error)}`);
   } finally {
     loading.value = false;
   }
@@ -122,30 +119,10 @@ const handleLogin = async () => {
 
 <template>
   <AuthLayout :video-src="loginVideo" content-offset-class="md:-translate-y-8">
-    <template #notice>
-      <div
-        v-if="errorMsg"
-        class="pointer-events-auto w-full max-w-[368px] overflow-hidden rounded-lg border border-white/10 bg-[#080808] px-4 py-4 text-white shadow-lg shadow-black/15"
-      >
-        <FuzzyText
-          text="登录失败"
-          :font-size="30"
-          :base-intensity="0.2"
-          :hover-intensity="0.55"
-          color="#ffffff"
-        />
-        <p class="mt-2 text-sm font-semibold leading-5 text-white/80">
-          {{ errorMsg }}
-        </p>
-      </div>
-    </template>
-
     <template #title>
       <span class="inline-flex items-baseline gap-2">
         <span>登录</span>
-        <span class="text-3xl font-black tracking-wide text-gray-900" style="font-family: 'PangMenZhengDao', serif;">
-          椿天社
-        </span>
+        <span>椿天社</span>
       </span>
     </template>
 
