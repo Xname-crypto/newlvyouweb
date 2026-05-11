@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ArrowLeft, X } from 'lucide-vue-next';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
+const shouldLoadVideo = ref(false);
 
 const props = defineProps<{
   videoSrc?: string;
@@ -17,6 +19,12 @@ defineEmits<{
 const goBack = () => {
   router.push('/');
 };
+
+onMounted(() => {
+  window.requestAnimationFrame(() => {
+    shouldLoadVideo.value = true;
+  });
+});
 </script>
 
 <template>
@@ -41,12 +49,12 @@ const goBack = () => {
         </button>
 
         <video 
-          v-if="props.videoSrc"
+          v-if="props.videoSrc && shouldLoadVideo"
           class="auth-layout-video absolute inset-0 h-full w-full bg-[#f8f7f5] object-cover"
           autoplay 
           muted 
           loop 
-          preload="auto"
+          preload="metadata"
           playsinline
         >
           <source :src="props.videoSrc" type="video/mp4">
