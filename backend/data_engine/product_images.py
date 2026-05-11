@@ -4,16 +4,22 @@ import base64
 import binascii
 import copy
 import mimetypes
+import os
 import re
 import uuid
 from typing import Any
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from supabase import create_client
 
 
 DATA_IMAGE_RE = re.compile(r"^data:(?P<mime>image/[-+.\w]+);base64,(?P<data>.*)$", re.DOTALL)
 MAX_INLINE_IMAGE_BYTES = 12 * 1024 * 1024
+SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_PRODUCT_IMAGE_BUCKET", "media")
+SUPABASE_STORAGE_PREFIX = os.getenv("SUPABASE_PRODUCT_IMAGE_PREFIX", "product-images").strip("/")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
 def normalize_image_value(value: Any) -> str:
@@ -92,6 +98,60 @@ def compact_product_metadata(product: Any) -> dict[str, Any]:
     return compacted
 
 
+def is_local_media_image(value: Any) -> bool:
+    image = normalize_image_value(value)
+    return image.startswith("/media/product-images/") or image.startswith("media/product-images/")
+
+
+def _supabase_storage_bucket():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_STORAGE_BUCKET:
+        return None
+    try:
+        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        return client.storage.from_(SUPABASE_STORAGE_BUCKET)
+    except Exception as exc:
+        print(f"[PRODUCT_IMAGE] Supabase storage unavailable: {exc}")
+        return None
+
+
+def _upload_product_image_to_supabase(content: bytes, content_type: str, ext: str) -> str:
+    bucket = _supabase_storage_bucket()
+    if not bucket:
+        return ""
+
+    path_parts = [part for part in (SUPABASE_STORAGE_PREFIX, f"{uuid.uuid4().hex}{ext}") if part]
+    storage_path = "/".join(path_parts)
+    try:
+        bucket.upload(
+            storage_path,
+            content,
+            {
+                "content-type": content_type,
+                "cache-control": "31536000",
+                "upsert": "false",
+            },
+        )
+        return bucket.get_public_url(storage_path)
+    except Exception as exc:
+        print(f"[PRODUCT_IMAGE] Supabase upload failed: {exc}")
+        return ""
+
+
+def store_image_bytes(content: bytes, content_type: str, *, prefer_supabase: bool = True) -> str:
+    ext = mimetypes.guess_extension(content_type) or ".png"
+    if ext == ".jpe":
+        ext = ".jpg"
+
+    if prefer_supabase:
+        public_url = _upload_product_image_to_supabase(content, content_type, ext)
+        if public_url:
+            return public_url
+
+    filename = f"product-images/{uuid.uuid4().hex}{ext}"
+    saved_path = default_storage.save(filename, ContentFile(content))
+    return default_storage.url(saved_path)
+
+
 def store_inline_image(value: Any) -> str:
     image = normalize_image_value(value)
     parsed = parse_inline_image(image)
@@ -99,12 +159,7 @@ def store_inline_image(value: Any) -> str:
         return image
 
     content_type, content = parsed
-    ext = mimetypes.guess_extension(content_type) or ".png"
-    if ext == ".jpe":
-        ext = ".jpg"
-    filename = f"product-images/{uuid.uuid4().hex}{ext}"
-    saved_path = default_storage.save(filename, ContentFile(content))
-    return default_storage.url(saved_path)
+    return store_image_bytes(content, content_type)
 
 
 def normalize_product_image_payload(payload: Any) -> dict[str, Any]:

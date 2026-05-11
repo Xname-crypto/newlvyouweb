@@ -1,23 +1,68 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from data_engine.models import Product
-from data_engine.product_images import is_inline_image, normalize_image_value, store_inline_image
+from data_engine.product_images import (
+    is_inline_image,
+    is_local_media_image,
+    normalize_image_value,
+    store_image_bytes,
+    store_inline_image,
+)
 
 
 class Command(BaseCommand):
-    help = "Move inline base64 product images into media files and store their URLs."
+    help = "Move product images into persistent Supabase Storage URLs."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="Report changes without saving.")
         parser.add_argument("--batch-size", type=int, default=10, help="Products to scan per database page.")
         parser.add_argument("--limit", type=int, default=0, help="Maximum products to scan. Zero scans all products.")
+        parser.add_argument(
+            "--include-local-media",
+            action="store_true",
+            help="Also upload existing /media/product-images/* files into Supabase Storage.",
+        )
+
+    def _store_local_media_image(self, image: str, *, dry_run: bool) -> str:
+        normalized = normalize_image_value(image)
+        if not is_local_media_image(normalized):
+            return normalized
+
+        relative_path = normalized.lstrip("/")
+        if relative_path.startswith("media/"):
+            relative_path = relative_path[len("media/"):]
+
+        local_path = Path(settings.MEDIA_ROOT) / relative_path
+        if not local_path.exists() or not local_path.is_file():
+            self.stdout.write(self.style.WARNING(f"Missing local media file: {normalized}"))
+            return normalized
+
+        if dry_run:
+            return normalized
+
+        content_type = "image/png"
+        suffix = local_path.suffix.lower()
+        if suffix in (".jpg", ".jpeg"):
+            content_type = "image/jpeg"
+        elif suffix == ".webp":
+            content_type = "image/webp"
+        elif suffix == ".gif":
+            content_type = "image/gif"
+        elif suffix == ".avif":
+            content_type = "image/avif"
+
+        return store_image_bytes(local_path.read_bytes(), content_type, prefer_supabase=True)
 
     def handle(self, *args, **options):
         dry_run = bool(options["dry_run"])
         batch_size = max(1, min(int(options["batch_size"] or 10), 100))
         limit = max(0, int(options["limit"] or 0))
+        include_local_media = bool(options["include_local_media"])
         scanned = 0
         changed = 0
         last_id = 0
@@ -43,6 +88,10 @@ class Command(BaseCommand):
                     if not image:
                         return ""
                     if not is_inline_image(image):
+                        if include_local_media and is_local_media_image(image):
+                            if image not in converted:
+                                converted[image] = self._store_local_media_image(image, dry_run=dry_run)
+                            return converted[image]
                         return image
                     if image not in converted:
                         converted[image] = image if dry_run else store_inline_image(image)
