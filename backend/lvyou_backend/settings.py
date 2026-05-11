@@ -14,6 +14,7 @@ import environ
 from pathlib import Path
 import os
 import importlib.util
+import re
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,7 +47,7 @@ def env_csv(name, default=None):
     raw_value = env(name, default="")
     if raw_value is None:
         raw_value = ""
-    values = [item.strip() for item in str(raw_value).split(",") if item.strip()]
+    values = [item.strip() for item in re.split(r"[\s,]+", str(raw_value)) if item.strip()]
     return values or list(default or [])
 
 # Quick-start development settings - unsuitable for production
@@ -92,14 +93,18 @@ MIDDLEWARE = [
 if HAS_WHITENOISE:
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
+DEFAULT_CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "https://newlvyouweb-web.zeabur.app",
+    "https://newlvyouweb-ing.zeabur.app",
+]
+
 CORS_ALLOWED_ORIGINS = env_csv(
     "CORS_ALLOWED_ORIGINS",
-    default=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    default=DEFAULT_CORS_ALLOWED_ORIGINS,
 )
 
 CORS_ALLOW_ALL_ORIGINS = False
