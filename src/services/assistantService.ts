@@ -1,6 +1,10 @@
 import { supabase } from '@/utils/supabase';
 import { apiUrl } from '@/utils/apiBase';
 
+const runtimeEnv = (globalThis as any).__APP_ENV__ || {}
+const supabaseUrl = () => runtimeEnv.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = () => runtimeEnv.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY
+
 export interface AssistantSession {
   id: string;
   user_id: string;
@@ -74,16 +78,19 @@ export const assistantService = {
 
     // Use raw fetch with proxy to bypass CORS
     // const supabaseUrl = import.meta.env.VITE_SUPABASE_URL; // Don't use absolute URL
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    
+    const anonKey = supabaseAnonKey();
+    const functionUrl = import.meta.env.DEV
+      ? '/functions/v1/generate-image'
+      : `${supabaseUrl()}/functions/v1/generate-image`;
+
     try {
       // Use relative path so Vite proxy can handle it
       // NOTE: We need to use /functions/v1 prefix which is what we configured in vite.config.ts
-      const response = await fetch(`/functions/v1/generate-image`, {
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Authorization': `Bearer ${anonKey}`,
         },
         body: JSON.stringify({ prompt, model }),
       });
@@ -128,16 +135,16 @@ export const assistantService = {
   },
 
   async analyzeImage(imageUrl: string, prompt?: string) {
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const anonKey = supabaseAnonKey();
     const functionUrl = import.meta.env.DEV 
       ? '/functions/v1/analyze-image' 
-      : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`;
+      : `${supabaseUrl()}/functions/v1/analyze-image`;
 
     const response = await fetch(functionUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Authorization': `Bearer ${anonKey}`,
       },
       body: JSON.stringify({ imageUrl, prompt }),
     });
@@ -155,7 +162,7 @@ export const assistantService = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('User not logged in');
 
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const anonKey = supabaseAnonKey();
     
     try {
       // 1. 调用 Supabase Edge Function (而不是直接调用智谱AI)
