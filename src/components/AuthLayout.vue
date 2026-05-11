@@ -7,18 +7,13 @@ const router = useRouter();
 
 const props = defineProps<{
   videoSrc?: string;
+  posterSrc?: string;
   showBack?: boolean;
   contentOffsetClass?: string;
 }>();
 
 const videoPoster = computed(() => {
-  if (!props.videoSrc) {
-    return '';
-  }
-
-  const [path, query = ''] = props.videoSrc.split('?');
-  const posterPath = path.replace(/\.mp4$/i, '.poster.jpg');
-  return query ? `${posterPath}?${query}` : posterPath;
+  return props.posterSrc || '';
 });
 
 defineEmits<{
@@ -65,9 +60,9 @@ const goBack = () => {
           autoplay 
           muted 
           loop 
-          preload="metadata"
+          preload="auto"
           playsinline
-          :poster="videoPoster"
+          :poster="videoPoster || undefined"
         >
           <source :src="props.videoSrc" type="video/mp4">
         </video>
