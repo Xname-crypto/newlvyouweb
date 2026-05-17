@@ -9,6 +9,13 @@ const handleScroll = () => {
   scrollY.value = window.scrollY;
 };
 
+const scrollToFirstSection = () => {
+  document.getElementById('01')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  });
+};
+
 onMounted(() => {
   window.addEventListener('scroll', handleScroll);
 });
@@ -50,10 +57,14 @@ onUnmounted(() => {
         :translate-y="0.28"
       />
 
-      <div class="mt-8 flex cursor-pointer items-center gap-4 font-bold text-text-main animate-bounce">
+      <button
+        type="button"
+        class="mt-8 flex cursor-pointer items-center gap-4 bg-transparent p-0 font-bold text-text-main animate-bounce transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-main/70 focus-visible:ring-offset-4 focus-visible:ring-offset-transparent"
+        @click="scrollToFirstSection"
+      >
         <span>向下滑动</span>
         <ArrowDown :size="20" />
-      </div>
+      </button>
     </div>
   </div>
 </template>
