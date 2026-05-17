@@ -4,29 +4,38 @@ defineProps<{
 }>();
 
 const sections = [
-  { id: 'start', label: '开始' },
+  { id: 'hero', label: '\u5f00\u59cb' },
   { id: '01', label: '01' },
   { id: '02', label: '02' },
   { id: '03', label: '03' },
 ];
+
+const scrollToSection = (sectionId: string) => {
+  document.getElementById(sectionId)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  });
+};
 </script>
 
 <template>
-  <div class="fixed right-0 top-1/2 -translate-y-1/2 flex flex-col items-end gap-8 z-40 px-8 hidden md:flex">
-    <div class="flex items-center gap-4 h-[240px]">
-      <div class="flex flex-col justify-between h-full text-right py-2">
-        <span 
-          v-for="(section, index) in sections" 
+  <div class="fixed right-0 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-end gap-8 px-8 md:flex">
+    <div class="flex h-[240px] items-center gap-4">
+      <div class="flex h-full flex-col justify-between py-2 text-right">
+        <button
+          v-for="(section, index) in sections"
           :key="section.id"
-          class="font-bold transition-colors duration-300"
+          type="button"
+          class="cursor-pointer bg-transparent p-0 text-right font-bold transition-colors duration-300 hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-main/70 focus-visible:ring-offset-4 focus-visible:ring-offset-transparent"
           :class="index === activeSection ? 'text-text-main' : 'text-text-main/50'"
+          @click="scrollToSection(section.id)"
         >
           {{ section.label }}
-        </span>
+        </button>
       </div>
-      <div class="w-[3px] h-full bg-white/20 relative rounded-full overflow-hidden">
-        <div 
-          class="absolute top-0 left-0 w-full bg-text-main transition-all duration-500 ease-out"
+      <div class="relative h-full w-[3px] overflow-hidden rounded-full bg-white/20">
+        <div
+          class="absolute left-0 top-0 w-full bg-text-main transition-all duration-500 ease-out"
           :style="{ height: '25%', transform: `translateY(${activeSection * 100}%)` }"
         ></div>
       </div>
