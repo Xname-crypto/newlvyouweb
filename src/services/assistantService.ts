@@ -146,21 +146,20 @@ export const assistantService = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('User not logged in');
 
-    // Make sure to handle non-ASCII characters in filename
-    const safeName = file.name.replace(/[^\x00-\x7F]/g, "img");
-    const fileName = `${session.user.id}/${Date.now()}-${safeName}`;
-    
-    const { data, error } = await supabase.storage
-      .from('media') 
-      .upload(fileName, file);
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(apiUrl('/api/community/media/'), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
 
-    if (error) throw error;
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || `Image upload failed: ${response.status}`);
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('media')
-      .getPublicUrl(fileName);
-
-    return publicUrl;
+    return data.urls?.[0] || data.items?.[0]?.url;
   },
 
   async analyzeImage(imageUrl: string, prompt?: string) {

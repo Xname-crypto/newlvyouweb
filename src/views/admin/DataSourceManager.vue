@@ -325,6 +325,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { Database, Plus, Settings, Trash2, X, RefreshCw, Table2, Eye, EyeOff, CloudUpload } from 'lucide-vue-next'
 import { apiUrl } from '@/utils/apiBase'
+import { supabase } from '@/utils/supabase'
 
 const API_URL = apiUrl('/api/datasources')
 
@@ -371,6 +372,15 @@ const form = reactive({
    file_path: ''
 })
 
+const authHeaders = async (includeJson = false) => {
+   const { data: { session } } = await supabase.auth.getSession()
+   if (!session) throw new Error('鐧诲綍鐘舵€佸凡杩囨湡锛岃閲嶆柊鐧诲綍')
+   return {
+      ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${session.access_token}`,
+   }
+}
+
 const getTypeColor = (type: string) => {
    switch(type) {
       case 'mysql': return 'bg-orange-400'
@@ -383,7 +393,7 @@ const getTypeColor = (type: string) => {
 const fetchConnections = async () => {
    loading.value = true
    try {
-      const res = await fetch(`${API_URL}/`)
+      const res = await fetch(`${API_URL}/`, { headers: await authHeaders() })
       if (res.ok) {
          connections.value = await res.json()
       }
@@ -405,7 +415,7 @@ const fetchTables = async (id: number) => {
    tablesLoading.value = true
    tables.value = []
    try {
-      const res = await fetch(`${API_URL}/${id}/tables/`)
+      const res = await fetch(`${API_URL}/${id}/tables/`, { headers: await authHeaders() })
       if (res.ok) {
          tables.value = await res.json()
       } else {
@@ -428,7 +438,7 @@ const fetchTablePreview = async (table: string) => {
    if (!selectedConnection.value) return
    dataLoading.value = true
    try {
-      const res = await fetch(`${API_URL}/${selectedConnection.value.id}/preview/${table}/`)
+      const res = await fetch(`${API_URL}/${selectedConnection.value.id}/preview/${table}/`, { headers: await authHeaders() })
       if (res.ok) {
          previewData.value = await res.json()
       } else {
@@ -478,7 +488,7 @@ const editConnection = (conn: Connection) => {
 const deleteConnection = async (conn: Connection) => {
    if(!confirm(`确定要删除连接 "${conn.name}" 吗？`)) return
    try {
-      await fetch(`${API_URL}/${conn.id}/`, { method: 'DELETE' })
+      await fetch(`${API_URL}/${conn.id}/`, { method: 'DELETE', headers: await authHeaders() })
       if (selectedConnection.value?.id === conn.id) {
          selectedConnection.value = null
       }
@@ -494,7 +504,7 @@ const testConnection = async () => {
    try {
       const res = await fetch(`${API_URL}/test_connection/`, {
          method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
+         headers: await authHeaders(true),
          body: JSON.stringify(form)
       })
       const data = await res.json()
@@ -520,7 +530,7 @@ const saveConnection = async () => {
       
       const res = await fetch(url, {
          method,
-         headers: { 'Content-Type': 'application/json' },
+         headers: await authHeaders(true),
          body: JSON.stringify(form)
       })
       
@@ -594,7 +604,7 @@ const ingestTable = async () => {
     try {
         const response = await fetch(`${API_URL}/${selectedConnection.value.id}/ingest/${selectedTable.value}/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await authHeaders(true),
             body: JSON.stringify({
                 content_columns: ingestConfig.contentCols,
                 metadata_columns: ingestConfig.metaCols,

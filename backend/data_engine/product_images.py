@@ -19,6 +19,7 @@ DATA_IMAGE_RE = re.compile(r"^data:(?P<mime>image/[-+.\w]+);base64,(?P<data>.*)$
 MAX_INLINE_IMAGE_BYTES = 12 * 1024 * 1024
 PRODUCT_IMAGE_MAX_DIMENSION = 1600
 PRODUCT_IMAGE_WEBP_QUALITY = 82
+ALLOWED_INLINE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_PRODUCT_IMAGE_BUCKET", "media")
 SUPABASE_STORAGE_PREFIX = os.getenv("SUPABASE_PRODUCT_IMAGE_PREFIX", "product-images").strip("/")
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
@@ -47,7 +48,19 @@ def parse_inline_image(value: Any) -> tuple[str, bytes] | None:
     if len(content) > MAX_INLINE_IMAGE_BYTES:
         raise ValueError("Product image is too large")
 
-    return match.group("mime"), content
+    content_type = match.group("mime").split(";")[0].strip().lower()
+    if content_type not in ALLOWED_INLINE_IMAGE_TYPES:
+        raise ValueError("Unsupported product image type")
+
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as image:
+            image.verify()
+    except Exception as exc:
+        raise ValueError("Product image content is invalid") from exc
+
+    return content_type, content
 
 
 def product_image_values(product: Any) -> list[str]:
@@ -142,7 +155,7 @@ def _upload_product_image_to_supabase(content: bytes, content_type: str, ext: st
 
 def optimize_product_image(content: bytes, content_type: str) -> tuple[bytes, str]:
     normalized_type = (content_type or "").split(";")[0].strip().lower()
-    if normalized_type in {"image/gif", "image/svg+xml"}:
+    if normalized_type == "image/gif":
         return content, content_type
 
     try:

@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from django.db import connections, DatabaseError
 from django.conf import settings
@@ -11,12 +12,19 @@ import time
 import json
 from supabase import create_client
 from data_engine.utils import get_embedding
+from data_engine.auth_middleware import is_admin_from_token
+
+
+class IsAdminOrModerator(BasePermission):
+    message = "Admin or moderator access required"
+
+    def has_permission(self, request, view):
+        return is_admin_from_token(request.headers.get("Authorization", ""))
 
 class DataSourceViewSet(viewsets.ModelViewSet):
     queryset = DataSource.objects.all().order_by('-created_at')
     serializer_class = DataSourceSerializer
-    
-    # In production, add permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminOrModerator]
     
     def get_dynamic_connection(self, instance):
         """

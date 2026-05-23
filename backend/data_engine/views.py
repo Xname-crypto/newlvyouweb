@@ -19,6 +19,7 @@ from .crawler import run_crawl
 from .llm_router import resolve_chat_llm
 from .models import EmbeddingProfile, KnowledgeBase, AdminQATestSession, AdminQATestMessage
 from .rag_service import create_knowledge_base, delete_knowledge_collection, load_documents, rag_service, split_documents
+from .security import sanitize_rich_text_html, safe_original_filename, validate_knowledge_upload
 from .utils import get_embedding
 from .serializers import (
     EmbeddingProfileSerializer,
@@ -31,11 +32,6 @@ from .serializers import (
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_MATCH_FUNCTION = os.getenv("SUPABASE_MATCH_FUNCTION", "match_knowledge_base")
-
-# Allowed file extensions for upload
-ALLOWED_FILE_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".csv", ".json", ".html", ".htm", ".pptx"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
 
 def _get_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -284,18 +280,8 @@ def _priority_or_response(value: Any) -> tuple[int, Response | None]:
 
 
 def _validate_file(file_obj) -> tuple[bool, str]:
-    """Validate file type and size. Returns (is_valid, error_message)"""
-    # Check file extension
-    file_name = file_obj.name if hasattr(file_obj, 'name') else str(file_obj)
-    ext = os.path.splitext(file_name)[1].lower()
-    if ext not in ALLOWED_FILE_EXTENSIONS:
-        return False, f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_FILE_EXTENSIONS)}"
-
-    # Check file size
-    if hasattr(file_obj, 'size') and file_obj.size > MAX_FILE_SIZE:
-        return False, f"File size exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
-
-    return True, ""
+    """Validate knowledge upload type, size, MIME and file header."""
+    return validate_knowledge_upload(file_obj)
 
 
 def _require_auth(view_func):
@@ -422,7 +408,7 @@ def _create_kb_document(*, kb: KnowledgeBase, dataset: KnowledgeBase, content: s
     KnowledgeBase.objects.create(
         kind="document",
         parent_knowledge_base=dataset,
-        content=(content or "").strip(),
+        content=sanitize_rich_text_html(content),
         metadata=_safe_metadata_dict(metadata),
         embedding_profile=kb.embedding_profile,
         status=status,
@@ -1383,7 +1369,10 @@ def rag_upload_knowledge(request):
     new_docs: List[Any] = []
 
     for file_obj in files:
-        dst = os.path.join(upload_dir, file_obj.name)
+        safe_name = safe_original_filename(getattr(file_obj, "name", "upload"))
+        dst = os.path.abspath(os.path.join(upload_dir, f"{timezone.now():%Y%m%d%H%M%S%f}-{safe_name}"))
+        if not dst.startswith(os.path.abspath(upload_dir) + os.sep):
+            return Response({"error": "Invalid file name"}, status=400)
         with open(dst, "wb+") as f:
             for chunk in file_obj.chunks():
                 f.write(chunk)
@@ -1645,6 +1634,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
             return None
 
     def list(self, request):
+        if err := self._check_admin(request):
+            return err
         mode = self._mode(request)
         page, page_size = self._pagination(request)
         offset = (page - 1) * page_size
@@ -1660,6 +1651,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"])
     def workspace(self, request):
+        if err := self._check_admin(request):
+            return err
         if self._mode(request) == "cloud":
             return Response({"error": "knowledge containers are only supported in local mode"}, status=501)
 
@@ -1749,6 +1742,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
         return Response(KnowledgeBaseSerializer(container).data, status=201)
 
     def retrieve(self, request, pk=None):
+        if err := self._check_admin(request):
+            return err
         if self._mode(request) == "cloud":
             return Response({"error": "knowledge containers are only supported in local mode"}, status=501)
 
@@ -1821,6 +1816,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
             return Response({"error": "KB not found"}, status=404)
 
         if request.method.lower() == "get":
+            if err := self._check_admin(request):
+                return err
             rows = _get_dataset_queryset(container)
             return Response(KnowledgeBaseSerializer(rows, many=True).data, status=200)
 
@@ -1914,6 +1911,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
         dataset = self._get_dataset(container, dataset_id)
 
         if request.method.lower() == "get":
+            if err := self._check_admin(request):
+                return err
             rows = _get_dataset_documents_queryset(dataset) if dataset else _get_knowledge_base_documents_queryset(container)
             return Response(KnowledgeBaseSerializer(rows, many=True).data, status=200)
 
@@ -2127,7 +2126,8 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
 
         created = []
         for file_obj in files:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_obj.name)[1]) as tmp:
+            safe_name = safe_original_filename(getattr(file_obj, "name", "upload"))
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(safe_name)[1]) as tmp:
                 for chunk in file_obj.chunks():
                     tmp.write(chunk)
                 tmp_path = tmp.name
@@ -2141,7 +2141,7 @@ class KnowledgeBaseViewSet(viewsets.ViewSet):
                     dataset=dataset,
                     content=content,
                     metadata={
-                        "name": file_obj.name,
+                        "name": safe_name,
                         "source_type": "upload",
                         "size": getattr(file_obj, "size", 0),
                         "category": _safe_metadata_dict(dataset.metadata).get("category") or "待分类",
@@ -2183,6 +2183,8 @@ class EmbeddingProfileViewSet(viewsets.ViewSet):
         return None
 
     def list(self, request):
+        if err := self._check_admin(request):
+            return err
         profiles = EmbeddingProfile.objects.all().order_by("-created_at")
         data = EmbeddingProfileSerializer(profiles, many=True).data
         return Response(data, status=200)
@@ -2198,6 +2200,8 @@ class EmbeddingProfileViewSet(viewsets.ViewSet):
         return Response(serializer.data, status=201)
 
     def retrieve(self, request, pk=None):
+        if err := self._check_admin(request):
+            return err
         try:
             profile = EmbeddingProfile.objects.get(pk=pk)
         except EmbeddingProfile.DoesNotExist:

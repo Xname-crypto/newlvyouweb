@@ -10,10 +10,11 @@ values ('media', 'media', true)
 on conflict (id) do nothing;
 
 -- Storage policies
+drop policy if exists "Public Access" on storage.objects;
 create policy "Public Access"
 on storage.objects for select
 using ( bucket_id = 'media' );
 
-create policy "Authenticated users can upload"
-on storage.objects for insert
-with check ( bucket_id = 'media' and auth.role() = 'authenticated' );
+drop policy if exists "Authenticated users can upload" on storage.objects;
+
+drop policy if exists "Users can replace their own media" on storage.objects;

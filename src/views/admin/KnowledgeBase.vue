@@ -856,7 +856,9 @@ const loadWorkspace = async (knowledgeBaseId?: number | null, datasetId?: number
     const query = new URLSearchParams({ source: 'local' })
     if (knowledgeBaseId) query.set('knowledge_base_id', String(knowledgeBaseId))
     if (datasetId) query.set('dataset_id', String(datasetId))
-    const response = await fetch(`${API_URL}workspace/?${query.toString()}`)
+    const response = await fetch(`${API_URL}workspace/?${query.toString()}`, {
+      headers: await authHeaders(false),
+    })
     const data = await parseJsonSafely(response) as WorkspaceResponse
     if (!response.ok) throw new Error(extractErrorMessage(data, '获取知识库工作台失败'))
 
@@ -895,7 +897,9 @@ const fetchKnowledgeBaseDocuments = async (knowledgeBaseId: number) => {
   if (knowledgeBaseDocuments.value.length && selectedKnowledgeBase.value?.id === knowledgeBaseId) return
 
   const query = new URLSearchParams({ source: 'local' })
-  const response = await fetch(`${API_URL}${knowledgeBaseId}/documents/?${query.toString()}`)
+  const response = await fetch(`${API_URL}${knowledgeBaseId}/documents/?${query.toString()}`, {
+    headers: await authHeaders(false),
+  })
   const data = await parseJsonSafely(response)
   if (!response.ok) throw new Error(extractErrorMessage(data, 'èŽ·å–å…¨éƒ¨èµ„æ–™å¤±è´¥'))
 
@@ -918,7 +922,9 @@ const fetchDocuments = async (knowledgeBaseId: number, datasetId: number) => {
 
   try {
     const query = new URLSearchParams({ source: 'local', dataset_id: String(datasetId) })
-    const response = await fetch(`${API_URL}${knowledgeBaseId}/documents/?${query.toString()}`)
+    const response = await fetch(`${API_URL}${knowledgeBaseId}/documents/?${query.toString()}`, {
+      headers: await authHeaders(false),
+    })
     const data = await parseJsonSafely(response)
     if (!response.ok) throw new Error(extractErrorMessage(data, '获取资料失败'))
 
@@ -934,7 +940,9 @@ const fetchDocuments = async (knowledgeBaseId: number, datasetId: number) => {
 
 const fetchEmbeddingProfiles = async () => {
   try {
-    const response = await fetch(apiUrl('/api/embedding-profiles/'))
+    const response = await fetch(apiUrl('/api/embedding-profiles/'), {
+      headers: await authHeaders(false),
+    })
     const data = await parseJsonSafely(response)
     if (response.ok) {
       embeddingProfiles.value = Array.isArray(data) ? data : data?.results || []

@@ -16,6 +16,7 @@ from rest_framework.response import Response
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 
 
 def _get_supabase_admin_client():
@@ -117,40 +118,24 @@ def get_user_from_token(token: str) -> Optional[dict]:
         if supabase_user:
             return supabase_user
 
-        # Remove 'Bearer ' prefix if present
-        if token.startswith("Bearer "):
-            token = token[7:]
+        if not SUPABASE_JWT_SECRET:
+            return None
 
-        # Decode with verification
-        # For anon key, we use HS256 algorithm
-        # Supabase uses the service role key for internal tokens
+        auth_token = token[7:] if token.startswith("Bearer ") else token
+
         options = {
             "verify_signature": True,
             "verify_exp": True,
             "verify_iat": True,
-            "verify_aud": False,  # Supabase doesn't always set aud
+            "verify_aud": False,
         }
 
-        # Try with anon key first (for public tokens from client)
-        try:
-            payload = jwt.decode(
-                token,
-                SUPABASE_ANON_KEY or "anonymous",
-                algorithms=["HS256"],
-                options=options
-            )
-            return payload
-        except jwt.InvalidTokenError:
-            # Try with service role key
-            if SUPABASE_SERVICE_ROLE_KEY:
-                payload = jwt.decode(
-                    token,
-                    SUPABASE_SERVICE_ROLE_KEY,
-                    algorithms=["HS256"],
-                    options=options
-                )
-                return payload
-            return None
+        return jwt.decode(
+            auth_token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options=options,
+        )
 
     except jwt.ExpiredSignatureError:
         return None

@@ -206,6 +206,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { supabase } from '@/utils/supabase'
+import { apiUrl } from '@/utils/apiBase'
 import { 
   Search, 
   Filter, 
@@ -266,6 +267,14 @@ const formatDate = (str?: string) => {
 const formatTime = (str?: string) => {
   if (!str) return ''
   return new Date(str).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+const authHeaders = async () => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('鐧诲綍鐘舵€佸凡杩囨湡锛岃閲嶆柊鐧诲綍')
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+  }
 }
 
 const load = async (p = 1) => {
@@ -368,13 +377,14 @@ const deleteComment = async (row: CommentRow) => {
   if (!confirm('确定要彻底删除这条评论吗？此操作不可恢复。')) return
 
   try {
-    // Admin hard delete
-    const { error } = await supabase
-      .from('comments')
-      .delete()
-      .eq('id', row.id)
-      
-    if (error) throw error
+    const response = await fetch(apiUrl(`/api/community/comments/${row.id}/`), {
+      method: 'DELETE',
+      headers: await authHeaders(),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error || `Delete failed: ${response.status}`)
+    }
     
     // Remove from local list
     const index = list.value.findIndex(item => item.id === row.id)

@@ -4,6 +4,7 @@ create table public.profiles (
   username text unique,
   avatar_url text,
   bio text,
+  role text not null default 'user',
   updated_at timestamp with time zone,
   
   constraint username_length check (char_length(username) >= 3)
@@ -32,6 +33,7 @@ create table public.posts (
   content text,
   type text check (type in ('video', 'image', 'article')) not null,
   media_urls text[] default '{}',
+  status text check (status in ('published', 'draft')) default 'published',
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -42,8 +44,14 @@ create table public.comments (
   user_id uuid references public.profiles(id) on delete cascade not null,
   parent_id bigint references public.comments(id) on delete cascade,
   content text not null,
+  is_deleted boolean not null default false,
+  deleted_at timestamp with time zone,
+  deleted_by uuid references public.profiles(id),
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.comments enable row level security;
+create policy "Comments are viewable by everyone." on public.comments for select using (coalesce(is_deleted, false) = false);
 
 -- Messages Table (Private Chat)
 create table public.messages (
@@ -73,12 +81,32 @@ create table public.interactions (
 -- RLS Policies (Examples)
 alter table public.profiles enable row level security;
 create policy "Public profiles are viewable by everyone." on public.profiles for select using (true);
-create policy "Users can insert their own profile." on public.profiles for insert with check (auth.uid() = id);
-create policy "Users can update own profile." on public.profiles for update using (auth.uid() = id);
+create policy "Users can insert their own profile." on public.profiles for insert with check (auth.uid() = id and coalesce(role, 'user') = 'user');
+create policy "Users can update own profile." on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
+
+create or replace function public.prevent_profile_role_self_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if auth.uid() = new.id and new.role is distinct from old.role then
+    raise exception 'profile role cannot be changed by the profile owner';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger prevent_profile_role_self_update
+before update of role on public.profiles
+for each row execute function public.prevent_profile_role_self_update();
+
+revoke execute on function public.prevent_profile_role_self_update() from anon, authenticated;
 
 alter table public.posts enable row level security;
 create policy "Posts are viewable by everyone." on public.posts for select using (true);
-create policy "Users can insert their own posts." on public.posts for insert with check (auth.uid() = user_id);
 
 alter table public.messages enable row level security;
 create policy "Users can view their own messages." on public.messages for select using (auth.uid() = sender_id or auth.uid() = receiver_id);

@@ -53,6 +53,13 @@ from data_engine.commerce_views import (
     ProductViewSet,
     zpay_notify,
 )
+from data_engine.community_views import (
+    comments_create,
+    comments_delete,
+    media_upload,
+    posts_create,
+    posts_update,
+)
 from datasource_manager.views import DataSourceViewSet
 
 router = DefaultRouter()
@@ -90,6 +97,11 @@ urlpatterns = [
     path('api/itinerary/items/<int:item_id>/', itinerary_delete_item, name='itinerary_delete_item'),
     path('api/booking-intents/', booking_intents, name='booking_intents'),
     path('api/payments/zpay/notify/', zpay_notify, name='zpay_notify'),
+    path('api/community/media/', media_upload, name='community_media_upload'),
+    path('api/community/posts/', posts_create, name='community_posts_create'),
+    path('api/community/posts/<int:post_id>/', posts_update, name='community_posts_update'),
+    path('api/community/comments/', comments_create, name='community_comments_create'),
+    path('api/community/comments/<int:comment_id>/', comments_delete, name='community_comments_delete'),
 ]
 
 urlpatterns += [

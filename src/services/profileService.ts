@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { apiUrl } from '@/utils/apiBase';
 
 export interface UpdateProfileParams {
   username?: string;
@@ -13,20 +14,23 @@ export const profileService = {
    */
   async uploadAvatar(file: File): Promise<string | null> {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `avatar-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('User not logged in');
 
-      const { error: uploadError } = await supabase.storage
-        .from('media') // Reuse 'media' bucket
-        .upload(filePath, file, {
-            upsert: true
-        });
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(apiUrl('/api/community/media/'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
 
-      if (uploadError) throw uploadError;
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Avatar upload failed: ${response.status}`);
 
-      const { data } = supabase.storage.from('media').getPublicUrl(filePath);
-      return data.publicUrl;
+      return data.urls?.[0] || data.items?.[0]?.url || null;
     } catch (error) {
       console.error('Error uploading avatar:', error);
       throw error;
@@ -216,7 +220,8 @@ export const profileService = {
           const { count: commentsCount, error: commentsError } = await supabase
             .from('comments')
             .select('*', { count: 'exact', head: true })
-            .in('post_id', postIds);
+            .in('post_id', postIds)
+            .eq('is_deleted', false);
             
           if (commentsError) throw commentsError;
           totalComments = commentsCount || 0;

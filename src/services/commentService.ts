@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { apiUrl } from '@/utils/apiBase';
 
 export interface Comment {
   id: number;
@@ -13,6 +14,15 @@ export interface Comment {
 }
 
 export const commentService = {
+  async authHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('User not authenticated');
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  },
+
   /**
    * Fetch comments for a specific post
    */
@@ -32,6 +42,7 @@ export const commentService = {
           likes:interactions(count)
         `)
         .eq('post_id', postId)
+        .eq('is_deleted', false)
         .eq('interactions.type', 'like') // Only count likes
         .order('created_at', { ascending: true });
 
@@ -76,27 +87,18 @@ export const commentService = {
    */
   async addComment(postId: number, content: string, parentId?: number) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      const { data, error } = await supabase
-        .from('comments')
-        .insert({
+      const response = await fetch(apiUrl('/api/community/comments/'), {
+        method: 'POST',
+        headers: await this.authHeaders(),
+        body: JSON.stringify({
           post_id: postId,
-          user_id: user.id,
           content: content,
           parent_id: parentId || null
-        })
-        .select(`
-          *,
-          profiles:user_id (
-            username,
-            avatar_url
-          )
-        `)
-        .single();
+        }),
+      });
 
-      if (error) throw error;
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Add comment failed: ${response.status}`);
       return data;
     } catch (error) {
       console.error('Error adding comment:', error);
@@ -109,19 +111,15 @@ export const commentService = {
    */
   async deleteComment(commentId: number) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const response = await fetch(apiUrl(`/api/community/comments/${commentId}/`), {
+        method: 'DELETE',
+        headers: await this.authHeaders(),
+      });
 
-      const { error } = await supabase
-        .from('comments')
-        .update({ 
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          deleted_by: user.id
-        })
-        .eq('id', commentId);
-
-      if (error) throw error;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Delete comment failed: ${response.status}`);
+      }
       return true;
     } catch (error) {
       console.error('Error deleting comment:', error);

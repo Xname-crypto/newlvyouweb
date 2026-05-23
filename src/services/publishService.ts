@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { apiUrl } from '@/utils/apiBase';
 
 export interface PublishPostParams {
   title: string;
@@ -11,23 +12,36 @@ export interface PublishPostParams {
 }
 
 export const publishService = {
+  async authHeaders(includeJson = true) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('User not authenticated');
+    return {
+      ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  },
+
   /**
-   * Uploads a file to Supabase Storage
+   * Uploads a file through the Django API so file type, size and content are
+   * validated server-side before storage.
    */
   async uploadFile(file: File): Promise<string | null> {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(apiUrl('/api/community/media/'), {
+        method: 'POST',
+        headers: await this.authHeaders(false),
+        body: formData,
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from('media') // Ensure 'media' bucket exists
-        .upload(filePath, file);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Upload failed: ${response.status}`);
+      }
 
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('media').getPublicUrl(filePath);
-      return data.publicUrl;
+      const data = await response.json();
+      return data.urls?.[0] || data.items?.[0]?.url || null;
     } catch (error) {
       console.error('Error uploading file:', error);
       return null;
@@ -52,7 +66,6 @@ export const publishService = {
       }
 
       const postData = {
-        user_id: user.id,
         title: params.title,
         content: params.content,
         type: params.type,
@@ -60,31 +73,26 @@ export const publishService = {
         status: params.status || 'published',
       };
 
-      let result;
+      let response: Response;
       
       if (params.id) {
-        // Update existing post
-        const { data, error } = await supabase
-          .from('posts')
-          .update(postData)
-          .eq('id', params.id)
-          .select()
-          .single();
-          
-        if (error) throw error;
-        result = data;
+        response = await fetch(apiUrl(`/api/community/posts/${params.id}/`), {
+          method: 'PATCH',
+          headers: await this.authHeaders(),
+          body: JSON.stringify(postData),
+        });
       } else {
-        // Create new post
-        const { data, error } = await supabase
-          .from('posts')
-          .insert(postData)
-          .select()
-          .single();
-          
-        if (error) throw error;
-        result = data;
+        response = await fetch(apiUrl('/api/community/posts/'), {
+          method: 'POST',
+          headers: await this.authHeaders(),
+          body: JSON.stringify(postData),
+        });
       }
 
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.error || `Post save failed: ${response.status}`);
+      }
       return result;
     } catch (error) {
       console.error('Error creating/updating post:', error);
@@ -163,12 +171,15 @@ export const publishService = {
    */
   async deletePost(id: string) {
     try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', id);
+      const response = await fetch(apiUrl(`/api/community/posts/${id}/`), {
+        method: 'DELETE',
+        headers: await this.authHeaders(false),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed: ${response.status}`);
+      }
       return true;
     } catch (error) {
       console.error('Error deleting post:', error);

@@ -555,7 +555,9 @@ const fetchPendingItems = async () => {
       page_size: pageSize.value.toString(),
     })
 
-    const response = await fetch(`${API_URL}?${params.toString()}`)
+    const response = await fetch(`${API_URL}?${params.toString()}`, {
+      headers: await getAdminHeaders(),
+    })
     if (!response.ok) throw new Error('Failed to fetch')
 
     const data = await response.json()

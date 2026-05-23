@@ -276,6 +276,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { AdminQATestSession } from '@/services/adminQATestService'
 import { adminQATestService } from '@/services/adminQATestService'
 import { apiUrl } from '@/utils/apiBase'
+import { supabase } from '@/utils/supabase'
 
 interface KnowledgeBase {
   id: number
@@ -406,8 +407,17 @@ const syncSelectedKnowledgeBase = () => {
   }
 }
 
+const adminHeaders = async () => {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('未登录，无法访问管理员接口')
+  return { Authorization: `Bearer ${token}` }
+}
+
 const fetchKnowledgeBases = async () => {
-  const response = await fetch(apiUrl('/api/knowledge/?source=local&page_size=500'))
+  const response = await fetch(apiUrl('/api/knowledge/?source=local&page_size=500'), {
+    headers: await adminHeaders()
+  })
   if (!response.ok) throw new Error('获取知识库失败')
   const data = await response.json()
   const items = Array.isArray(data) ? data : data.results || []
